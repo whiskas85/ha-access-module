@@ -1,0 +1,257 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  NODO rfid-ingresso — lettore esterno del varco pedonale
+#
+#  RUOLO: legge, non decide, non attua.
+#  Questo dispositivo sta FUORI dal perimetro di sicurezza. Un attaccante che
+#  lo compromette completamente ottiene la capacita' di DICHIARARE "ho letto
+#  il codice X" — non di aprire. Nessun GPIO di questo nodo e' collegato a un
+#  rele' di un varco, e non deve esserlo mai.
+#
+#  Le chiavi crittografiche (future, NTAG424 AES-128) stanno in Home
+#  Assistant, mai qui.
+# ═══════════════════════════════════════════════════════════════════════════
+
+substitutions:
+  node_name: rfid-ingresso
+  friendly_name: "RFID Ingresso"
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+  # esp-idf: stack piu' robusto di arduino per I2C + WiFi in contemporanea
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+  # ATTENZIONE: non alzare a DEBUG/VERBOSE in esercizio.
+  # A livello DEBUG l'integrazione PN532 stampa i byte letti; quando arrivera'
+  # l'R503 stamperebbe i byte dei template biometrici. Un template biometrico
+  # nei log e' un template biometrico esfiltrato.
+
+# ── API con cifratura Noise. Senza questa il canale e' in chiaro. ──────────
+api:
+  encryption:
+    key: !secret rfid_ingresso_api_key
+
+  actions:
+    # ═══════════════════════════════════════════════════════════════════════
+    #  UNICA superficie di comando esposta a HA.
+    #  HA chiama esphome.rfid_ingresso_esito_accesso con esito "ok" | "ko".
+    #  Il dispositivo si limita a emettere il pattern acustico corrispondente.
+    #  Non apre nulla: non ha nulla da aprire.
+    # ═══════════════════════════════════════════════════════════════════════
+    - action: esito_accesso
+      variables:
+        esito: string
+      then:
+        - lambda: 'id(ha_ha_risposto) = true;'
+        - if:
+            condition:
+              lambda: 'return esito == "ok";'
+            then:
+              - script.execute: bip_ok
+            else:
+              - script.execute: bip_ko
+
+ota:
+  - platform: esphome
+    password: !secret rfid_ingresso_ota_password
+
+wifi:
+  ssid: !secret iot_wifi_ssid
+  password: !secret iot_wifi_password
+  # Il nodo esterno va su VLAN/SSID IoT isolata: e' il dispositivo piu'
+  # esposto dell'impianto e non deve poter parlare con la rete di casa.
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret rfid_ingresso_ap_password
+
+captive_portal:
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  BUS I2C — PN532 alimentato a 5V, bus a 50 kHz
+#
+#  50 kHz e non i 100 kHz di default: il PN532 su cavo lungo verso l'esterno
+#  perde pacchetti a velocita' piena. Il tastierino a matrice via PCF8574
+#  (previsto, §4) andra' su questo stesso bus.
+# ───────────────────────────────────────────────────────────────────────────
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  frequency: 50kHz
+  scan: true
+  id: bus_i2c
+
+pn532_i2c:
+  id: lettore_pn532
+  update_interval: 500ms
+  on_tag:
+    then:
+      # ══ Rate limiter LOCALE ═════════════════════════════════════════════
+      #    max 3 letture / 10 s, indipendente da quello di HA.
+      #    Serve da solo a poco (chi sostituisce il firmware lo rimuove), ma
+      #    evita che un tag lasciato appoggiato al lettore inondi l'API.
+      #    Il rate limiter che conta davvero e' quello dentro casa.
+      - if:
+          condition:
+            lambda: |-
+              const uint32_t ora = millis();
+              if (ora - id(finestra_inizio) > 10000) {
+                id(finestra_inizio) = ora;
+                id(letture_finestra) = 0;
+              }
+              id(letture_finestra)++;
+              return id(letture_finestra) <= 3;
+          then:
+            - lambda: 'id(ha_ha_risposto) = false;'
+            - homeassistant.tag_scanned: !lambda 'return x;'
+            # Attendo la decisione di HA. Se entro 3 s non arriva risposta,
+            # il pattern "non raggiungibile" dice all'utente che il problema
+            # e' la rete, non la sua credenziale.
+            - script.execute: attendi_risposta_ha
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  BUZZER ATTIVO su GPIO18
+#
+#  Attivo = ha il proprio oscillatore. Si pilota on/off e ignora la
+#  frequenza: usare rtttl o output PWM qui non produce toni, produce silenzio
+#  o un tono fisso. Va trattato come uno switch.
+# ───────────────────────────────────────────────────────────────────────────
+switch:
+  - platform: gpio
+    pin: GPIO18
+    id: buzzer
+    name: "Buzzer"
+    internal: true
+    restore_mode: ALWAYS_OFF
+
+
+globals:
+  - id: finestra_inizio
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: letture_finestra
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: ha_ha_risposto
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  PATTERN ACUSTICI (§8)
+#
+#  Tre pattern, tre significati distinti — e solo tre.
+#  In particolare NON esiste un pattern "tag sconosciuto" separato da "tag
+#  valido fuori orario": entrambi sono KO identici. Se il buzzer distinguesse
+#  i due casi, chi trova un tag capirebbe dal feedback che quel tag e'
+#  censito e vale la pena tornare a un altro orario.
+# ───────────────────────────────────────────────────────────────────────────
+script:
+  # OK — due bip corti ravvicinati
+  - id: bip_ok
+    mode: restart
+    then:
+      - switch.turn_on: buzzer
+      - delay: 60ms
+      - switch.turn_off: buzzer
+      - delay: 80ms
+      - switch.turn_on: buzzer
+      - delay: 60ms
+      - switch.turn_off: buzzer
+
+  # KO — un bip lungo
+  - id: bip_ko
+    mode: restart
+    then:
+      - switch.turn_on: buzzer
+      - delay: 1200ms
+      - switch.turn_off: buzzer
+
+  # HA non raggiungibile — tre bip corti distanziati
+  - id: bip_attesa
+    mode: restart
+    then:
+      - repeat:
+          count: 3
+          then:
+            - switch.turn_on: buzzer
+            - delay: 80ms
+            - switch.turn_off: buzzer
+            - delay: 250ms
+
+  # Timeout di 3 s sulla risposta di HA
+  - id: attendi_risposta_ha
+    mode: restart
+    then:
+      - delay: 3s
+      - if:
+          condition:
+            lambda: 'return !id(ha_ha_risposto);'
+          then:
+            - logger.log: "Nessuna risposta da HA entro 3s"
+            - script.execute: bip_attesa
+
+
+button:
+  - platform: template
+    name: "Buzzer test OK"
+    on_press:
+      - script.execute: bip_ok
+  - platform: template
+    name: "Buzzer test KO"
+    on_press:
+      - script.execute: bip_ko
+  - platform: template
+    name: "Buzzer test attesa"
+    on_press:
+      - script.execute: bip_attesa
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  FALLBACK LOCALE — NON IMPLEMENTATO. LEGGERE PRIMA DI AGGIUNGERLO.
+#
+#  La spec §10 chiede che, se HA non risponde entro il timeout e siamo dentro
+#  la finestra scuola, l'ESP apra autonomamente il solo cancelletto.
+#
+#  La spec §2 dice, testualmente e sotto l'intestazione "non negoziabile":
+#      "L'ESP32 esterno non deve mai pilotare un rele' collegato a un varco.
+#       Nessuna eccezione, nemmeno 'per comodita'' o 'solo come fallback'."
+#
+#  Le due sezioni si contraddicono. §2 e' marcata non negoziabile e anticipa
+#  alla lettera proprio questa richiesta, quindi qui vince §2 e il fallback
+#  locale non e' stato scritto. Implementarlo significherebbe:
+#
+#    - portare un rele' di varco sul dispositivo esterno, cioe' spostare
+#      l'attuazione fuori dal perimetro di sicurezza;
+#    - memorizzare una credenziale valida nella flash di un dispositivo
+#      fisicamente accessibile dall'esterno;
+#    - rendere l'apertura ottenibile semplicemente impedendo a HA di
+#      rispondere — cioe' un attaccante che stacca la rete apre il cancello.
+#
+#  L'ultimo punto e' il piu' serio: trasforma un guasto di rete in una
+#  primitiva di apertura, e la rete e' la cosa piu' facile da disturbare
+#  dall'esterno.
+#
+#  ALTERNATIVA che copre lo stesso caso quotidiano senza spostare
+#  l'attuazione (§10, "fallback manuale"):
+#    - key safe con combinazione, oppure
+#    - PIN nativo della serratura Nuki.
+#  Nessuno dei due dipende da rete, da HA o dall'alimentazione del lettore,
+#  e nessuno dei due mette un rele' fuori casa.
+#
+#  Se dopo questa lettura il fallback locale va comunque implementato, e' una
+#  decisione consapevole da prendere esplicitamente — non da far scivolare
+#  dentro come dettaglio implementativo.
+# ═══════════════════════════════════════════════════════════════════════════
