@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-26
+
 ### Aggiunto
 
 - **Scheda «Dispositivi»: aggiungere un lettore e censire una tessera sono
