@@ -8,6 +8,28 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Il pannello dice quando la pagina che stai guardando è vecchia.** La
+  versione era già dichiarata dal pannello e tenuta allineata dal bump, ma il
+  confronto non era mai stato scritto: il risultato è che sul telefono si
+  poteva restare su una versione di due settimane prima senza alcun segnale,
+  convinti che mancassero funzioni che invece c'erano
+  - I due disallineamenti hanno cause opposte e il messaggio lo dice: pannello
+    più vecchio dell'integration significa **copia in cache del browser** (e
+    compare il pulsante **Ricarica**); pannello più nuovo significa **Home
+    Assistant non ancora riavviato**, e lì ricaricare non serve a niente
+  - Il pulsante Ricarica svuota la Cache Storage e aggiorna il service worker
+    prima di ricaricare: un `location.reload()` semplice può restituire di
+    nuovo proprio il file che è il problema
+  - Il confronto è numerico e non alfabetico, altrimenti `0.10.0` risulterebbe
+    più vecchio di `0.9.0`
+- **L'URL del pannello porta la versione** (`?v=…`). È la prevenzione, non il
+  rimedio: `cache_headers=False` non basta perché il frontend di Home
+  Assistant ha un service worker che conserva le risorse per conto suo. A ogni
+  versione l'URL cambia, quindi il browser chiede una risorsa che in cache non
+  può avere
+
 ## [0.6.1] - 2026-08-26
 
 ### Corretto

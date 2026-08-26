@@ -6,6 +6,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import AccessCoordinator
@@ -56,9 +57,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # può leggere subito chi ha letto in passato.
     _seed_readers_from_tags(hass, store)
 
+    # La versione in esecuzione serve sia a marcare l'URL del pannello, sia al
+    # pannello stesso per accorgersi di essere vecchio.
+    integration = await async_get_integration(hass, DOMAIN)
+    version = str(integration.version or "")
+    hass.data[DOMAIN]["version"] = version
+
     await async_setup_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    await async_setup_panel(hass)
+    await async_setup_panel(hass, version)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     _LOGGER.debug("Controllo Accessi avviato (entry %s)", entry.entry_id)

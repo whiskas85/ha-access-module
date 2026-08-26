@@ -35,7 +35,7 @@ API_STATE = f"/api/{DOMAIN}/state"
 API_COMMAND = f"/api/{DOMAIN}/command"
 
 
-async def async_setup_panel(hass: HomeAssistant) -> None:
+async def async_setup_panel(hass: HomeAssistant, version: str = "") -> None:
     """Registra risorse statiche, API e voce nella barra laterale."""
     if hass.data[DOMAIN].get("panel_registered"):
         return
@@ -48,12 +48,22 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
     hass.http.register_view(AccessStateView)
     hass.http.register_view(AccessCommandView)
 
+    # La versione nell'URL del modulo è ciò che impedisce al browser di
+    # continuare a servire il pannello vecchio dopo un aggiornamento.
+    # `cache_headers=False` non basta: il frontend di Home Assistant ha un
+    # service worker che conserva le risorse per conto suo, e sul telefono un
+    # pannello di due versioni fa può restare lì per giorni. Cambiando URL a
+    # ogni versione, la richiesta è per una risorsa che in cache non c'è.
+    modulo = f"{STATIC_URL}/{PANEL_JS}"
+    if version:
+        modulo = f"{modulo}?v={version}"
+
     try:
         await panel_custom.async_register_panel(
             hass,
             frontend_url_path=PANEL_URL,
             webcomponent_name="access-control-panel",
-            module_url=f"{STATIC_URL}/{PANEL_JS}",
+            module_url=modulo,
             sidebar_title=PANEL_TITLE,
             sidebar_icon=PANEL_ICON,
             require_admin=True,
@@ -207,6 +217,10 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
     store, coordinator = data["store"], data["coordinator"]
 
     return {
+        # Il pannello la confronta con la propria: se non coincidono, uno dei
+        # due è vecchio e va detto invece di lasciar credere che manchino
+        # funzioni che in realtà ci sono.
+        "versione": data.get("version", ""),
         "stato": {
             "sistema": store.system_state,
             "motivo": store.state_reason,

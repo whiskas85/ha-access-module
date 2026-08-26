@@ -68,6 +68,8 @@ const ICONE = {
     "M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5",
   piu:
     "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z",
+  ricarica:
+    "M17.65 6.35A8 8 0 0 0 12 4a8 8 0 0 0-8 8 8 8 0 0 0 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18a6 6 0 0 1-6-6 6 6 0 0 1 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z",
   togliRuolo:
     "M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c1.2 0 2.34.13 3.36.37l-1.7 1.7c-.54-.05-1.1-.07-1.66-.07-3.09 0-6 1.29-6 2v1h5.43l-2 2H4v-2c0-2.66 5.33-4 8-4M22.11 21.46 20.7 22.87 18.5 20.68l-2.2 2.19-1.41-1.41 2.19-2.2-2.19-2.2 1.41-1.41 2.2 2.19 2.2-2.19 1.41 1.41-2.19 2.2z",
 };
@@ -196,8 +198,13 @@ class AccessControlPanel extends HTMLElement {
           </nav>
         </header>
         ${this._errore ? `<div class="err">${esc(this._errore)}</div>` : ""}
+        ${this._avvisoVersione(d)}
         ${d ? this._corpo(d) : `<div class="vuoto">Caricamento…</div>`}
-        <footer>pannello v${PANEL_VERSION}</footer>
+        <footer>pannello v${PANEL_VERSION}${
+          d?.versione && d.versione !== PANEL_VERSION
+            ? ` · integration v${esc(d.versione)}`
+            : ""
+        }</footer>
       </div>`;
 
     this.shadowRoot.querySelectorAll("[data-tab]").forEach((el) =>
@@ -207,6 +214,75 @@ class AccessControlPanel extends HTMLElement {
       }),
     );
     this._agganciaAzioni();
+  }
+
+  // ── disallineamento di versione ──────────────────────────────────────
+
+  _avvisoVersione(d) {
+    const server = d?.versione;
+    if (!server || server === PANEL_VERSION) return "";
+
+    // Le due direzioni hanno cause e rimedi diversi, e dire quello sbagliato
+    // manda a cercare il problema dalla parte opposta.
+    const vecchioIlPannello = this._minore(PANEL_VERSION, server);
+
+    return `
+      <div class="disallineata">
+        ${icona("alert")}
+        <div class="disallineata-testo">
+          <strong>Questa pagina non è aggiornata</strong>
+          ${
+            vecchioIlPannello
+              ? `<p>Stai vedendo il pannello <b>v${esc(PANEL_VERSION)}</b> mentre
+                   l'integration installata è la <b>v${esc(server)}</b>. È una copia
+                   rimasta nella cache del browser: le funzioni nuove ci sono, ma
+                   questa pagina non le sa disegnare.</p>`
+              : `<p>Il pannello è la <b>v${esc(PANEL_VERSION)}</b> ma l'integration in
+                   esecuzione è la <b>v${esc(server)}</b>: i file sono stati aggiornati e
+                   Home Assistant non è ancora ripartito. <b>Riavvia Home
+                   Assistant</b>; ricaricare la pagina non basta.</p>`
+          }
+        </div>
+        ${
+          vecchioIlPannello
+            ? `<button data-act="ricarica">${icona("ricarica")} Ricarica</button>`
+            : ""
+        }
+      </div>`;
+  }
+
+  _minore(a, b) {
+    // Confronto per numeri e non per stringhe: "0.10.0" < "0.9.0" solo in
+    // ordine alfabetico, e sarebbe il verso sbagliato.
+    const pa = String(a).split(".").map(Number);
+    const pb = String(b).split(".").map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const x = pa[i] || 0;
+      const y = pb[i] || 0;
+      if (x !== y) return x < y;
+    }
+    return false;
+  }
+
+  async _ricarica() {
+    // Un semplice location.reload() può rirestituire lo stesso file dalla
+    // cache: è proprio quella copia il problema. Si svuota la Cache Storage
+    // del frontend e si aggiorna il service worker, poi si ricarica. Le cache
+    // svuotate si riempiono da sole al giro dopo.
+    try {
+      if (window.caches) {
+        const chiavi = await caches.keys();
+        await Promise.all(chiavi.map((k) => caches.delete(k)));
+      }
+      if (navigator.serviceWorker) {
+        const reg = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(reg.map((r) => r.update()));
+      }
+    } catch (err) {
+      // Se la pulizia non riesce si ricarica lo stesso: peggio di così non va.
+      console.warn("Pulizia cache non riuscita", err);
+    }
+    location.reload();
   }
 
   _corpo(d) {
@@ -894,6 +970,10 @@ class AccessControlPanel extends HTMLElement {
     const num = (id) => Number(val(id));
     const chk = (id) => r.getElementById(id)?.checked ?? false;
 
+    r.querySelector('[data-act="ricarica"]')?.addEventListener("click", () =>
+      this._ricarica(),
+    );
+
     r.querySelector('[data-act="unlock"]')?.addEventListener("click", () =>
       this._comando({ action: "unlock_readers" }),
     );
@@ -1341,6 +1421,17 @@ class AccessControlPanel extends HTMLElement {
       .scegli-ruolo .ico { width:21px; height:21px; }
       .vuoto-gruppo { display:flex; align-items:center; gap:12px; }
       .ico-grande { width:30px; height:30px; flex:0 0 auto; opacity:.55; }
+
+      /* ── disallineamento di versione ─────────────────────────────────── */
+      .disallineata { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;
+                      background:rgba(255,167,38,.15); border:1px solid rgba(255,167,38,.5);
+                      border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+      .disallineata > .ico { flex:0 0 auto; color:#e08600; margin-top:3px; width:22px; height:22px; }
+      .disallineata-testo { flex:1 1 260px; }
+      .disallineata-testo strong { font-size:1.05rem; }
+      .disallineata-testo p { margin:6px 0 0; font-size:.9rem; line-height:1.55;
+                              color:var(--secondary-text-color); }
+      .disallineata button { flex:0 0 auto; }
 
       /* ── scheda dispositivi ──────────────────────────────────────────── */
       .cerca-riga { display:flex; align-items:center; gap:10px; margin-bottom:12px;
