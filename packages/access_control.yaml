@@ -1,0 +1,758 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  MODULO CONTROLLO ACCESSI — package Home Assistant
+#  https://github.com/whiskas85/ha-access-module
+#
+#  Installazione:
+#    1. copiare questo file in  /config/packages/access_control.yaml
+#    2. assicurarsi che configuration.yaml contenga:
+#         homeassistant:
+#           packages: !include_dir_named packages
+#    3. Strumenti per sviluppatori -> Controlla configurazione -> Riavvia
+#
+#  PRINCIPIO ARCHITETTURALE (non negoziabile):
+#    credenziale (ESP32 esterno)  ->  decisione (questo file)  ->  attuazione
+#    L'ESP32 esterno non pilota alcun rele' collegato a un varco. Legge e
+#    dichiara "ho letto X"; chi decide sta dentro casa.
+#
+#  NESSUN UID DI TAG COMPARE IN QUESTO FILE.
+#  Gli UID stanno negli helper input_text.access_cred_*, che non sono
+#  versionati. Un UID pubblicato e' un tag gia' clonato.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 1. HELPER — master e stato
+# ───────────────────────────────────────────────────────────────────────────
+input_boolean:
+  access_master:
+    name: "Access: Master"
+    icon: mdi:shield-key
+    # nessun `initial:` -> lo stato sopravvive ai riavvii di HA
+
+  # ── Finestra scuola: giorni abilitati ────────────────────────────────────
+  access_school_day_monday:
+    name: "Access: Giorno scuola lunedi"
+    icon: mdi:calendar-today
+  access_school_day_tuesday:
+    name: "Access: Giorno scuola martedi"
+    icon: mdi:calendar-today
+  access_school_day_wednesday:
+    name: "Access: Giorno scuola mercoledi"
+    icon: mdi:calendar-today
+  access_school_day_thursday:
+    name: "Access: Giorno scuola giovedi"
+    icon: mdi:calendar-today
+  access_school_day_friday:
+    name: "Access: Giorno scuola venerdi"
+    icon: mdi:calendar-today
+
+  # ── Comportamento ────────────────────────────────────────────────────────
+  access_notify_on_entry:
+    name: "Access: Notifica ad ogni accesso"
+    icon: mdi:bell-ring
+
+  access_snapshot_on_entry:
+    name: "Access: Allega immagine Ring alla notifica"
+    icon: mdi:camera
+
+
+input_select:
+  access_state:
+    name: "Access: Stato"
+    icon: mdi:state-machine
+    options:
+      - sleep
+      - finestra_scuola
+      - rientro_adulto
+      - casa_occupata
+
+
+input_datetime:
+  access_school_start:
+    name: "Access: Inizio finestra scuola"
+    icon: mdi:clock-start
+    has_date: false
+    has_time: true
+
+  access_school_end:
+    name: "Access: Fine finestra scuola"
+    icon: mdi:clock-end
+    has_date: false
+    has_time: true
+
+  access_last_entry:
+    name: "Access: Ultimo accesso"
+    icon: mdi:login
+    has_date: true
+    has_time: true
+
+
+input_number:
+  access_sleep_delay:
+    name: "Access: Ritardo ritorno a sleep"
+    icon: mdi:timer-sand
+    min: 1
+    max: 120
+    step: 1
+    unit_of_measurement: min
+    mode: box
+
+  access_door_ajar_alert:
+    name: "Access: Soglia porta socchiusa"
+    icon: mdi:door-open
+    min: 1
+    max: 60
+    step: 1
+    unit_of_measurement: min
+    mode: box
+
+  access_rate_limit_window:
+    name: "Access: Finestra rate limit"
+    icon: mdi:speedometer-slow
+    min: 5
+    max: 120
+    step: 1
+    unit_of_measurement: s
+    mode: box
+
+  access_rate_limit_max:
+    name: "Access: Tentativi ammessi nella finestra"
+    icon: mdi:counter
+    min: 1
+    max: 20
+    step: 1
+    mode: box
+
+
+input_text:
+  # ─────────────────────────────────────────────────────────────────────────
+  #  REGISTRO CREDENZIALI
+  #
+  #  Gli UID dei tag vivono QUI, non nel repository.
+  #  Valorizzarli da  Impostazioni -> Dispositivi e servizi -> Helper,
+  #  oppure da Strumenti per sviluppatori -> Azioni -> input_text.set_value.
+  #
+  #  Formato: l'UID esattamente come lo riporta l'integrazione Tag,
+  #  maiuscolo con trattini. Esempio di FORMA (non un UID reale):
+  #      00-00-00-00
+  #
+  #  Un campo vuoto = credenziale non censita. Non apre nulla.
+  # ─────────────────────────────────────────────────────────────────────────
+  access_cred_bambino:
+    name: "Access: UID tag bambino"
+    icon: mdi:account-child
+    max: 255
+    mode: text
+
+  access_cred_adulto_1:
+    name: "Access: UID tag adulto 1"
+    icon: mdi:account
+    max: 255
+    mode: text
+
+  access_cred_adulto_2:
+    name: "Access: UID tag adulto 2"
+    icon: mdi:account
+    max: 255
+    mode: text
+
+  access_last_credential:
+    name: "Access: Ultima credenziale usata"
+    icon: mdi:card-account-details
+    max: 255
+    mode: text
+
+
+counter:
+  access_denied_today:
+    name: "Access: Tentativi negati oggi"
+    icon: mdi:cancel
+    initial: 0
+    step: 1
+    restore: true
+
+  # Contatore di servizio del rate limiter lato HA (vedi timer omonimo).
+  access_rate_limit_hits:
+    name: "Access: Tentativi nella finestra corrente"
+    icon: mdi:speedometer
+    initial: 0
+    step: 1
+    restore: false
+
+
+timer:
+  # Finestra scorrevole del rate limiter lato HA. La durata viene impostata
+  # a runtime da input_number.access_rate_limit_window.
+  access_rate_limit_window:
+    name: "Access: Finestra rate limit in corso"
+    icon: mdi:timer-outline
+    duration: "00:00:10"
+    restore: false
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 2. SENSORI TEMPLATE
+#
+#    Espongono COSA farebbe il sistema adesso e PERCHE', cosi' la logica e'
+#    ispezionabile senza aprire le automazioni. Stesso pattern di
+#    binary_sensor.sprinkler_will_water_today + sensor.sprinkler_watering_reason.
+# ───────────────────────────────────────────────────────────────────────────
+template:
+  - binary_sensor:
+
+      # ── La finestra scuola e' attiva adesso? ────────────────────────────
+      - name: "Access: Finestra scuola attiva"
+        unique_id: access_finestra_scuola
+        icon: mdi:school
+        state: >-
+          {% set giorni = ['monday','tuesday','wednesday','thursday','friday'] %}
+          {% set wd = now().weekday() %}
+          {% if wd > 4 %}
+            false
+          {% else %}
+            {% set giorno_ok = is_state('input_boolean.access_school_day_' ~ giorni[wd], 'on') %}
+            {% set s = states('input_datetime.access_school_start') %}
+            {% set e = states('input_datetime.access_school_end') %}
+            {% if s in ['unknown','unavailable'] or e in ['unknown','unavailable'] %}
+              false
+            {% else %}
+              {{ giorno_ok and today_at(s) <= now() <= today_at(e) }}
+            {% endif %}
+          {% endif %}
+
+      # ── Presenza "recente": resta on per access_sleep_delay minuti dopo
+      #    che l'ultima persona ha lasciato casa. E' cio' che implementa il
+      #    ritardo di ritorno a sleep senza `delay:` dentro le automazioni.
+      - name: "Access: Presenza recente"
+        unique_id: access_presenza_recente
+        icon: mdi:home-account
+        state: >-
+          {{ is_state('person.marco','home') or is_state('person.andre','home') }}
+        delay_off: >-
+          {{ (states('input_number.access_sleep_delay') | int(10)) * 60 }}
+
+      # ── Un adulto sta rientrando (dentro la zona di avvicinamento) ──────
+      - name: "Access: Adulto in avvicinamento"
+        unique_id: access_adulto_in_avvicinamento
+        icon: mdi:map-marker-account
+        state: >-
+          {{ is_state('person.marco','Vicinanze di casa')
+             or is_state('person.andre','Vicinanze di casa') }}
+
+      # ── IL sensore chiave: il sistema accetterebbe una credenziale ora? ─
+      - name: "Access: Sistema armato"
+        unique_id: access_armed
+        icon: mdi:shield-check
+        state: >-
+          {{ is_state('input_boolean.access_master','on')
+             and not is_state('input_select.access_state','sleep') }}
+
+      # ── Porta socchiusa da troppo tempo ────────────────────────────────
+      - name: "Access: Porta socchiusa"
+        unique_id: access_door_ajar
+        icon: mdi:door-open
+        device_class: problem
+        state: >-
+          {{ is_state('binary_sensor.contatto_porta_blindata_window','on') }}
+        delay_on: >-
+          {{ (states('input_number.access_door_ajar_alert') | int(5)) * 60 }}
+
+  - sensor:
+
+      # ── Stato porta: incrocia DUE fonti indipendenti ────────────────────
+      #    lock.portone (serratura Nuki)  +  reed sull'anta.
+      #    Se si contraddicono e' un guasto o un forzamento: stato distinto.
+      #
+      #    Nota: anta chiusa + serratura sbloccata NON e' incoerente, e' la
+      #    condizione normale di porta accostata ma non mandata in sicurezza.
+      #    Incoerente e' solo: anta APERTA mentre la serratura dice CHIUSA A
+      #    CHIAVE — fisicamente impossibile.
+      - name: "Access: Stato porta"
+        unique_id: access_door_status
+        icon: mdi:door
+        state: >-
+          {% set l = states('lock.portone') %}
+          {% set r = states('binary_sensor.contatto_porta_blindata_window') %}
+          {% if l in ['unknown','unavailable'] or r in ['unknown','unavailable'] %}
+            sconosciuto
+          {% elif l == 'jammed' %}
+            errore
+          {% elif l in ['opening','unlocking','locking'] %}
+            in_apertura
+          {% elif r == 'on' and l == 'locked' %}
+            incoerente
+          {% elif r == 'on' %}
+            aperta
+          {% else %}
+            chiusa
+          {% endif %}
+        attributes:
+          serratura: "{{ states('lock.portone') }}"
+          anta: >-
+            {{ 'aperta' if is_state('binary_sensor.contatto_porta_blindata_window','on') else 'chiusa' }}
+
+      # ── Perche' il sistema e' in questo stato ───────────────────────────
+      - name: "Access: Motivo stato"
+        unique_id: access_state_reason
+        icon: mdi:help-circle-outline
+        state: >-
+          {% if is_state('input_boolean.access_master','off') %}
+            Master accessi spento
+          {% elif is_state('input_select.access_state','casa_occupata') %}
+            Casa occupata: presenza rilevata
+          {% elif is_state('input_select.access_state','rientro_adulto') %}
+            Rientro adulto: qualcuno in avvicinamento
+          {% elif is_state('input_select.access_state','finestra_scuola') %}
+            Finestra scuola attiva fino alle {{ states('input_datetime.access_school_end')[:5] }}
+          {% elif is_state('binary_sensor.access_finestra_scuola','on') %}
+            Sleep: finestra scuola attiva, stato non ancora aggiornato
+          {% else %}
+            Sleep: fuori finestra scuola, nessuno in avvicinamento
+          {% endif %}
+
+      # ── Card markdown consolidata (vista operativa) ─────────────────────
+      #    Un solo sensore produce il testo intero: la dashboard resta banale
+      #    e il testo e' testabile da Strumenti per sviluppatori -> Template.
+      - name: "Access: Riepilogo"
+        unique_id: access_riepilogo
+        icon: mdi:text-box-outline
+        state: "{{ states('input_select.access_state') }}"
+        attributes:
+          markdown: >-
+            {% if is_state('binary_sensor.access_armed','on') %}🔓 **Sistema armato**{% else %}🔒 **Sistema in sleep**{% endif %}
+
+            {{ states('sensor.access_state_reason') }}
+
+
+            **Ultimo accesso:** {% set le = states('input_datetime.access_last_entry') %}{% if le in ['unknown','unavailable'] %}mai{% else %}{{ as_timestamp(le) | timestamp_custom('%d/%m/%Y - %H:%M') }}{% endif %}{% set lc = states('input_text.access_last_credential') %}{% if lc and lc not in ['unknown','unavailable'] %} ({{ lc }}){% endif %}
+
+            **Porta:** {{ states('sensor.access_door_status') }}
+
+            **Tentativi negati oggi:** {{ states('counter.access_denied_today') }}
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# 3. AUTOMAZIONI
+# ───────────────────────────────────────────────────────────────────────────
+automation:
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: valuta credenziale ingresso
+  #
+  #  Punto centrale del modulo. UN SOLO trigger (l'evento tag_scanned grezzo)
+  #  perche' cosi' anche un tag SCONOSCIUTO passa da qui: e' l'unico modo per
+  #  garantire per costruzione che il feedback sia identico in ogni diniego.
+  #  Se ogni tag censito avesse la sua automazione, un tag ignoto non
+  #  riceverebbe risposta e il buzzer emetterebbe il pattern "HA non
+  #  raggiungibile" — rivelando proprio che quel tag non e' censito.
+  #
+  #  OGNI RAMO TERMINA CON esito_accesso. Nessuna eccezione: se HA tace,
+  #  dopo 3 s l'utente crede che il sistema sia guasto quando era solo
+  #  fuori orario.
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_valuta_credenziale_ingresso
+    alias: "Access: valuta credenziale ingresso"
+    description: >-
+      Valuta ogni tag letto dal nodo rfid-ingresso e risponde SEMPRE al
+      dispositivo. Il feedback e' binario (ok/ko) e non rivela mai il motivo
+      del diniego: il motivo reale finisce nel logbook e nella notifica.
+    mode: queued
+    max: 5
+    triggers:
+      - trigger: event
+        event_type: tag_scanned
+    actions:
+
+      # ── 1. Chi ha bussato? Classifico la credenziale ────────────────────
+      - variables:
+          uid: "{{ trigger.event.data.tag_id | default('') | upper }}"
+          classe: >-
+            {% set u = trigger.event.data.tag_id | default('') | upper %}
+            {% set b = states('input_text.access_cred_bambino') | upper %}
+            {% set a1 = states('input_text.access_cred_adulto_1') | upper %}
+            {% set a2 = states('input_text.access_cred_adulto_2') | upper %}
+            {% if u and u == b %}bambino
+            {% elif u and (u == a1 or u == a2) %}adulto
+            {% else %}sconosciuta{% endif %}
+          etichetta: >-
+            {% set u = trigger.event.data.tag_id | default('') | upper %}
+            {% set b = states('input_text.access_cred_bambino') | upper %}
+            {% set a1 = states('input_text.access_cred_adulto_1') | upper %}
+            {% set a2 = states('input_text.access_cred_adulto_2') | upper %}
+            {% if u and u == b %}tag bambino
+            {% elif u and u == a1 %}tag adulto 1
+            {% elif u and u == a2 %}tag adulto 2
+            {% else %}credenziale sconosciuta{% endif %}
+
+      # ── 2. Rate limit lato HA ───────────────────────────────────────────
+      #     Quello nell'ESP non basta: un firmware sostituito lo aggirerebbe
+      #     inondando l'API. Questo e' il secondo strato, dentro casa.
+      - if:
+          - condition: state
+            entity_id: timer.access_rate_limit_window
+            state: idle
+        then:
+          - action: counter.reset
+            target:
+              entity_id: counter.access_rate_limit_hits
+          - action: timer.start
+            target:
+              entity_id: timer.access_rate_limit_window
+            data:
+              duration: "{{ states('input_number.access_rate_limit_window') | int(10) }}"
+
+      - action: counter.increment
+        target:
+          entity_id: counter.access_rate_limit_hits
+
+      # ── 3. Decisione ────────────────────────────────────────────────────
+      - variables:
+          troppi_tentativi: >-
+            {{ (states('counter.access_rate_limit_hits') | int(0))
+               > (states('input_number.access_rate_limit_max') | int(3)) }}
+          stato: "{{ states('input_select.access_state') }}"
+          # Matrice §5: quale classe di credenziale e' ammessa in quale stato
+          classe_ammessa: >-
+            {% set s = states('input_select.access_state') %}
+            {% if s == 'casa_occupata' %}{{ classe in ['bambino','adulto'] }}
+            {% elif s == 'rientro_adulto' %}{{ classe == 'adulto' }}
+            {% elif s == 'finestra_scuola' %}{{ classe == 'bambino' }}
+            {% else %}false{% endif %}
+          motivo: >-
+            {% if (states('counter.access_rate_limit_hits') | int(0))
+                  > (states('input_number.access_rate_limit_max') | int(3)) %}
+              rate limit superato ({{ states('counter.access_rate_limit_hits') }} tentativi in {{ states('input_number.access_rate_limit_window') | int }} s)
+            {% elif is_state('input_boolean.access_master','off') %}
+              master accessi spento
+            {% elif is_state('binary_sensor.access_armed','off') %}
+              sistema in sleep
+            {% elif classe == 'sconosciuta' %}
+              credenziale non censita
+            {% else %}
+              credenziale non ammessa nello stato "{{ states('input_select.access_state') }}"
+            {% endif %}
+
+      - choose:
+
+          # ══ RAMO OK ══════════════════════════════════════════════════════
+          - conditions:
+              - condition: template
+                value_template: "{{ not troppi_tentativi }}"
+              - condition: state
+                entity_id: input_boolean.access_master
+                state: "on"
+              - condition: state
+                entity_id: binary_sensor.access_armed
+                state: "on"
+              - condition: template
+                value_template: "{{ classe_ammessa }}"
+            sequence:
+
+              # Rispondere al dispositivo PRIMA di attuare: l'utente sente il
+              # bip mentre i varchi si muovono, non qualche secondo dopo.
+              - action: esphome.rfid_ingresso_esito_accesso
+                data:
+                  esito: "ok"
+
+              # Apertura contestuale dei due varchi. Sono a 7 m a vista:
+              # valutata accettabile in fase di specifica (§9.5).
+              - action: switch.turn_on
+                target:
+                  entity_id: switch.cancelletto
+              - action: lock.open
+                target:
+                  entity_id: lock.portone
+
+              # Registro
+              - action: input_datetime.set_datetime
+                target:
+                  entity_id: input_datetime.access_last_entry
+                data:
+                  datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.access_last_credential
+                data:
+                  value: "{{ etichetta }}"
+
+              - action: logbook.log
+                data:
+                  name: "Access"
+                  message: "Accesso CONSENTITO — {{ etichetta }} — stato {{ stato }}"
+                  entity_id: binary_sensor.access_armed
+
+              - if:
+                  - condition: state
+                    entity_id: input_boolean.access_notify_on_entry
+                    state: "on"
+                then:
+                  - action: notify.notify
+                    data:
+                      title: "🔓 Accesso consentito"
+                      message: "{{ etichetta }} — {{ now().strftime('%H:%M') }} (stato: {{ stato }})"
+                      data: >-
+                        {{ {'image': '/api/camera_proxy/camera.ingresso_principale_live_view'}
+                           if is_state('input_boolean.access_snapshot_on_entry','on') else {} }}
+
+        # ══ RAMO KO — default ═══════════════════════════════════════════════
+        #    Un solo default per OGNI motivo di diniego. Tag sconosciuto, tag
+        #    valido fuori finestra, sistema disarmato: feedback identico.
+        #    Chi trova un tag non deve poter capire dal buzzer se quel tag e'
+        #    censito e vale la pena tornare a un altro orario.
+        default:
+          - action: esphome.rfid_ingresso_esito_accesso
+            data:
+              esito: "ko"
+
+          - action: counter.increment
+            target:
+              entity_id: counter.access_denied_today
+
+          - action: logbook.log
+            data:
+              name: "Access"
+              message: "Accesso NEGATO — {{ etichetta }} — motivo: {{ motivo | trim }}"
+              entity_id: binary_sensor.access_armed
+
+          # Il motivo reale va qui, non nel buzzer.
+          - action: notify.notify
+            data:
+              title: "⛔ Accesso negato"
+              message: "{{ etichetta }} — {{ now().strftime('%H:%M') }} — motivo: {{ motivo | trim }}"
+              data:
+                image: /api/camera_proxy/camera.ingresso_principale_live_view
+
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: macchina a stati
+  #
+  #  Priorita' decrescente. Il primo ramo che matcha vince.
+  #    master off      -> sleep
+  #    presenza        -> casa_occupata
+  #    adulto vicino   -> rientro_adulto
+  #    finestra scuola -> finestra_scuola
+  #    altrimenti      -> sleep
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_macchina_a_stati
+    alias: "Access: macchina a stati"
+    description: >-
+      Unica proprietaria di input_select.access_state. Nessun'altra
+      automazione deve scriverlo.
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id:
+          - input_boolean.access_master
+          - binary_sensor.access_finestra_scuola
+          - binary_sensor.access_presenza_recente
+          - binary_sensor.access_adulto_in_avvicinamento
+          - person.marco
+          - person.andre
+          - binary_sensor.contatto_porta_blindata_window
+      # Rete di sicurezza: se un trigger di stato si perde, entro un minuto
+      # la macchina si riallinea comunque.
+      - trigger: time_pattern
+        minutes: "/1"
+      - trigger: homeassistant
+        event: start
+    actions:
+      - variables:
+          nuovo_stato: >-
+            {% if is_state('input_boolean.access_master','off') %}sleep
+            {% elif is_state('binary_sensor.access_presenza_recente','on') %}casa_occupata
+            {% elif is_state('binary_sensor.access_adulto_in_avvicinamento','on') %}rientro_adulto
+            {% elif is_state('binary_sensor.access_finestra_scuola','on') %}finestra_scuola
+            {% else %}sleep{% endif %}
+
+      # Scrivo solo se cambia davvero: evita rumore in recorder e logbook.
+      - condition: template
+        value_template: "{{ nuovo_stato != states('input_select.access_state') }}"
+
+      - action: input_select.select_option
+        target:
+          entity_id: input_select.access_state
+        data:
+          option: "{{ nuovo_stato }}"
+
+      - action: logbook.log
+        data:
+          name: "Access"
+          message: "Stato -> {{ nuovo_stato }} ({{ states('sensor.access_state_reason') }})"
+          entity_id: input_select.access_state
+
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: azzera contatore dinieghi
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_azzera_dinieghi
+    alias: "Access: azzera contatore dinieghi"
+    mode: single
+    triggers:
+      - trigger: time
+        at: "00:00:00"
+    actions:
+      - action: counter.reset
+        target:
+          entity_id: counter.access_denied_today
+
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: porta socchiusa
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_porta_socchiusa
+    alias: "Access: porta socchiusa"
+    description: >-
+      La blindata e' aperta da piu' di access_door_ajar_alert minuti.
+      Priorita' alta se non risulta nessuno in casa.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.access_door_ajar
+        to: "on"
+    actions:
+      - action: notify.notify
+        data:
+          title: "🚪 Porta blindata socchiusa"
+          message: >-
+            Aperta da oltre {{ states('input_number.access_door_ajar_alert') | int }} minuti.{% if is_state('binary_sensor.access_presenza_recente','off') %} In casa non risulta nessuno.{% endif %}
+          data: >-
+            {{ {'ttl': 0, 'priority': 'high',
+                'image': '/api/camera_proxy/camera.ingresso_principale_live_view'}
+               if is_state('binary_sensor.access_presenza_recente','off')
+               else {'image': '/api/camera_proxy/camera.ingresso_principale_live_view'} }}
+
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: incoerenza sensori
+  #
+  #  Le due fonti si contraddicono: anta aperta mentre la serratura dichiara
+  #  chiusa a chiave. E' un guasto o un forzamento. Non e' mai normale.
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_incoerenza_sensori
+    alias: "Access: incoerenza sensori"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.access_door_status
+        to: incoerente
+        for: "00:00:20"
+    actions:
+      - action: notify.notify
+        data:
+          title: "⚠️ Incoerenza sensori porta"
+          message: >-
+            L'anta risulta aperta ma la serratura dichiara chiusa a chiave.
+            Guasto sensore o forzamento — verificare.
+          data:
+            ttl: 0
+            priority: high
+            image: /api/camera_proxy/camera.ingresso_principale_live_view
+
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: apertura non autorizzata
+  #
+  #  NOTA DI IMPLEMENTAZIONE — scostamento consapevole dalla spec §9.
+  #  La spec prevede "maniglia azionata a casa vuota". La Nuki Smart Lock Pro
+  #  via MQTT su questo impianto espone SOLO lock.portone: non pubblica lo
+  #  stato della maniglia. Quella sorgente non esiste, quindi quel trigger
+  #  non e' implementabile oggi.
+  #  Sorgente equivalente e disponibile: l'anta si apre mentre il sistema e'
+  #  in sleep e non risulta nessuno in casa. NON APRE NULLA: notifica e basta.
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_apertura_non_autorizzata
+    alias: "Access: apertura non autorizzata"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.contatto_porta_blindata_window
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: input_select.access_state
+        state: sleep
+      - condition: state
+        entity_id: binary_sensor.access_presenza_recente
+        state: "off"
+    actions:
+      - action: notify.notify
+        data:
+          title: "🚨 Porta aperta a casa vuota"
+          message: >-
+            La blindata si e' aperta alle {{ now().strftime('%H:%M') }} con il
+            sistema in sleep e nessuno in casa.
+          data:
+            ttl: 0
+            priority: high
+            image: /api/camera_proxy/camera.ingresso_principale_live_view
+
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: errore serratura
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_errore_serratura
+    alias: "Access: errore serratura"
+    description: >-
+      La serratura riporta errore o e' irraggiungibile. Se siamo in finestra
+      scuola la notifica porta con se' l'azione per aprire dal telefono.
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: lock.portone
+        to: jammed
+        id: bloccata
+      - trigger: state
+        entity_id: lock.portone
+        to: unavailable
+        for: "00:03:00"
+        id: irraggiungibile
+    actions:
+      - action: notify.notify
+        data:
+          title: "🔧 Problema serratura"
+          message: >-
+            {% if trigger.id == 'bloccata' %}La serratura riporta un blocco meccanico (jammed).{% else %}La serratura e' irraggiungibile da 3 minuti.{% endif %}{% if is_state('input_select.access_state','finestra_scuola') %} Finestra scuola in corso: apri manualmente dalla notifica.{% endif %}
+          data: >-
+            {{ {'ttl': 0, 'priority': 'high',
+                'actions': [{'action': 'ACCESS_APRI_MANUALE', 'title': 'Apri ora'}]}
+               if is_state('input_select.access_state','finestra_scuola')
+               else {'ttl': 0, 'priority': 'high'} }}
+
+
+  # ═════════════════════════════════════════════════════════════════════════
+  #  Access: apertura manuale da notifica
+  #
+  #  Fallback dal telefono di un adulto quando la serratura e' in errore
+  #  durante la finestra scuola. Non e' il fallback di §10 (quello vive
+  #  nell'ESP e non dipende da HA): questo richiede HA vivo e raggiungibile.
+  # ═════════════════════════════════════════════════════════════════════════
+  - id: access_apertura_manuale_da_notifica
+    alias: "Access: apertura manuale da notifica"
+    mode: single
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: ACCESS_APRI_MANUALE
+    actions:
+      - action: switch.turn_on
+        target:
+          entity_id: switch.cancelletto
+      - action: lock.open
+        target:
+          entity_id: lock.portone
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.access_last_credential
+        data:
+          value: "apertura manuale da telefono"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.access_last_entry
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: logbook.log
+        data:
+          name: "Access"
+          message: "Apertura manuale da notifica"
+          entity_id: binary_sensor.access_armed
