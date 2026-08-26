@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-26
+
 ### Aggiunto
 
 - **I lettori si riconoscono da soli.** Prima il lettore di un varco si
