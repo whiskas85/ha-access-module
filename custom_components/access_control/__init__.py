@@ -86,15 +86,6 @@ def _async_subscribe_tags(
             return
         device_id = event.data.get("device_id") or ""
         gate_id = _gate_for_device(store, device_id)
-
-        # Durante il censimento la lettura appartiene al varco su cui il
-        # censimento è aperto, qualunque cosa dica la mappatura. È il momento
-        # in cui il lettore ci si sta presentando: pretendere che sia già
-        # mappato significherebbe chiedere di configurare la cosa che stiamo
-        # per imparare, e la lettura finirebbe sul varco sbagliato.
-        if store.enrollment_active and store.enrollment_gate:
-            gate_id = store.enrollment_gate
-
         await evaluator.async_handle_scan(uid, gate_id, device_id=device_id)
 
     return hass.bus.async_listen(EVENT_TAG_SCANNED, _handle)
@@ -114,12 +105,20 @@ def _seed_readers_from_tags(hass: HomeAssistant, store: AccessStore) -> None:
 
 
 def _gate_for_device(store: AccessStore, device_id: str | None) -> str:
-    """Da quale varco arriva questa lettura."""
+    """Da quale varco arriva questa lettura.
+
+    Con un varco solo l'associazione è implicita e chiederla sarebbe pedanteria.
+    Con più varchi no: attribuire una lettura non mappata al primo varco
+    significherebbe far aprire il varco sbagliato, in silenzio. Meglio nessun
+    varco, così la valutazione nega e il registro dice perché.
+    """
     if device_id:
         for gate_id, gate in store.gates.items():
             if gate.get("reader_device_id") == device_id:
                 return gate_id
-    return next(iter(store.gates), "ingresso")
+    if len(store.gates) == 1:
+        return next(iter(store.gates))
+    return ""
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -28,7 +28,7 @@ SERVICE_START_ENROLLMENT = "start_enrollment"
 
 ENROLLMENT_SCHEMA = vol.Schema(
     {
-        vol.Optional("gate", default=""): cv.string,
+        vol.Optional("device", default=""): cv.string,
         vol.Optional("seconds", default=ENROLLMENT_TIMEOUT_S): vol.All(
             vol.Coerce(int), vol.Range(min=5, max=300)
         ),
@@ -117,7 +117,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     async def _start_enrollment(call: ServiceCall) -> None:
         _data()["store"].start_enrollment(
             call.data.get("seconds", ENROLLMENT_TIMEOUT_S),
-            call.data.get("gate", ""),
+            call.data.get("device", ""),
         )
 
     async def _set_state(call: ServiceCall) -> None:

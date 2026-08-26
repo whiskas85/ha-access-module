@@ -133,6 +133,16 @@ def _dispositivi_disponibili(hass: HomeAssistant, store) -> list[dict[str, Any]]
     )
 
 
+def _nome_dispositivo(hass: HomeAssistant, store, device_id: str) -> str:
+    if not device_id:
+        return ""
+    voce = store.devices.get(device_id) or {}
+    if voce.get("nome"):
+        return voce["nome"]
+    device = dr.async_get(hass).async_get(device_id)
+    return (device.name_by_user or device.name) if device else device_id
+
+
 def _dispositivi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
     """I lettori registrati, con quello che si è osservato di loro."""
     registry = dr.async_get(hass)
@@ -214,8 +224,8 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
         "enrollment": {
             "attivo": store.enrollment_active,
             "secondi": store.enrollment_seconds_left,
-            "varco": store.enrollment_gate,
-            "varco_nome": (store.gate(store.enrollment_gate) or {}).get("name", ""),
+            "device": store.enrollment_device,
+            "device_nome": _nome_dispositivo(hass, store, store.enrollment_device),
         },
         "persone": _persone(hass, store),
         "impostazioni": store.settings,
@@ -323,7 +333,7 @@ class AccessCommandView(HomeAssistantView):
                 )
 
             elif action == "start_enrollment":
-                store.start_enrollment(ENROLLMENT_TIMEOUT_S, body.get("gate", ""))
+                store.start_enrollment(ENROLLMENT_TIMEOUT_S, body.get("device", ""))
 
             elif action == "cancel_enrollment":
                 store.cancel_enrollment()

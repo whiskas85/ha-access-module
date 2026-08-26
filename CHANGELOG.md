@@ -8,6 +8,36 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Il censimento offriva i varchi invece dei lettori.** Con zero lettori
+  registrati mostrava comunque «Abilita lettura — Ingresso»: un pulsante che
+  non poteva ricevere niente, perché nessun dispositivo era in ascolto.
+  Prometteva qualcosa che non era in grado di fare
+  - Ora la sezione si chiama **«Aggiungi una tessera»** e dentro si sceglie
+    con quale **lettore registrato** leggerla — il lettore è la cosa fisica a
+    cui ci si avvicina con la tessera in mano; il varco è un'altra cosa, e con
+    un varco non si legge niente
+  - Con un lettore solo il pulsante è uno e non ripete il nome. Con più
+    lettori ce n'è uno per lettore
+  - Senza lettori registrati non compaiono pulsanti: compare il motivo e una
+    scorciatoia alla scheda Dispositivi
+- **Una lettura da un lettore non registrato non può più censire una tessera**,
+  nemmeno a finestra aperta. Chi vuole censire da un lettore nuovo prima lo
+  registra: è un gesto separato e consapevole
+- **Con più varchi, una lettura da un lettore non associato a nessuno di essi
+  viene negata** invece di finire sul primo varco. Attribuirla al primo
+  significava far aprire il varco sbagliato, in silenzio; ora il registro
+  scrive `lettore_non_associato_a_nessun_varco`. Con un varco solo
+  l'associazione resta implicita, perché chiederla sarebbe pedanteria
+
+### Modificato
+
+- Il pulsante «Aggiungi tessera» è uno solo e non più uno per varco: i lettori
+  registrati cambiano a runtime mentre le entità si creano all'avvio, quindi
+  un'entità per lettore sarebbe rimasta indietro. Non è disponibile finché non
+  c'è almeno un lettore registrato
+
 ## [0.6.0] - 2026-08-26
 
 ### Aggiunto

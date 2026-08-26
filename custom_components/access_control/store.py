@@ -61,7 +61,10 @@ class AccessStore:
         # garage mentre stai censendo all'ingresso finisce nel registro senza
         # che nessuno l'abbia voluta. Una lettura da un altro varco viene
         # valutata normalmente.
-        self.enrollment_gate: str = ""
+        # Su QUALE lettore si sta censendo — un dispositivo, non un varco: il
+        # lettore è la cosa fisica a cui ci si avvicina con la tessera in
+        # mano. Vuoto = un lettore registrato qualsiasi.
+        self.enrollment_device: str = ""
         # Due elenchi distinti, e la distinzione conta.
         #
         # `readers` è ciò che si è OSSERVATO: chi ha emesso `tag_scanned`.
@@ -334,7 +337,7 @@ class AccessStore:
         # può essere allo stesso tempo "censisci questa tessera" e "scarta
         # questa tessera, mi serve solo il lettore".
         self.enrollment_until = None
-        self.enrollment_gate = ""
+        self.enrollment_device = ""
         self.device_learning_until = dt_util.utcnow() + timedelta(seconds=seconds)
         self.notify()
 
@@ -358,23 +361,31 @@ class AccessStore:
             0, int((self.enrollment_until - dt_util.utcnow()).total_seconds())
         )
 
-    def start_enrollment(self, seconds: int, gate_id: str = "") -> None:
+    def start_enrollment(self, seconds: int, device_id: str = "") -> None:
         # Vedi start_device_learning: le due modalità si escludono.
         self.device_learning_until = None
-        self.enrollment_gate = gate_id or next(iter(self.gates), "")
+        self.enrollment_device = device_id
         self.enrollment_until = dt_util.utcnow() + timedelta(seconds=seconds)
         self.notify()
 
     def cancel_enrollment(self) -> None:
         self.enrollment_until = None
-        self.enrollment_gate = ""
+        self.enrollment_device = ""
         self.notify()
 
-    def enrollment_accepts(self, gate_id: str) -> bool:
-        """Questa lettura va censita, o valutata normalmente?"""
+    def enrollment_accepts(self, device_id: str) -> bool:
+        """Questa lettura va censita, o valutata normalmente?
+
+        Solo da un lettore **registrato**: una lettura da un dispositivo che
+        non fa parte dell'impianto non deve poter aggiungere credenziali,
+        nemmeno con la finestra aperta. Chi vuole censire da un lettore nuovo
+        prima lo registra, e quello è un gesto separato e consapevole.
+        """
         if not self.enrollment_active:
             return False
-        return not self.enrollment_gate or self.enrollment_gate == gate_id
+        if device_id not in self.devices:
+            return False
+        return not self.enrollment_device or self.enrollment_device == device_id
 
     async def async_update_card(self, card_id: str, changes: dict[str, Any]) -> Card:
         card = self.cards.get(card_id)

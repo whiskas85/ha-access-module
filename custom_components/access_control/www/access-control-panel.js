@@ -288,44 +288,56 @@ class AccessControlPanel extends HTMLElement {
 
   _vistaTessere(d) {
     const enr = d.enrollment || {};
-    const varchi = d.varchi || [];
+    const lettori = d.dispositivi || [];
 
-    // ── censimento: sempre esplicito su QUALE lettore ───────────────────
-    const piuVarchi = varchi.length > 1;
-    const bottoniVarco = varchi
-      .map(
-        (g) => `<div class="scelta-varco">
-                  <button data-enroll="${esc(g.id)}">
-                    ${icona("cardPlus")} Abilita lettura — ${esc(g.name)}
-                  </button>
-                  <span class="uid">${
-                    g.reader_device_mancante
-                      ? `<span class="avviso">${icona("alert")} nessun lettore associato — vai in Dispositivi</span>`
-                      : `lettore: ${esc(g.reader_device_name || g.reader_device_id)}`
-                  }</span>
-                </div>`,
-      )
-      .join("");
-
+    // Il censimento aggiunge una TESSERA. Il lettore è solo lo strumento con
+    // cui la si legge, quindi si sceglie qui dentro fra quelli registrati —
+    // non fra i varchi, che sono un'altra cosa e con cui non si legge niente.
     const boxEnrollment = enr.attivo
       ? `<div class="attesa">
            <div class="pulsa"></div>
            <div class="attesa-testo">
-             <strong>In attesa della tessera su “${esc(enr.varco_nome || enr.varco)}”</strong>
-             <p class="nota">Passa la tessera davanti a <b>quel</b> lettore.
-               Una lettura da un altro varco viene valutata normalmente, non censita.
-               Si chiude fra <b>${enr.secondi}s</b>, o alla prima lettura.</p>
+             <strong>Passa la tessera${
+               enr.device_nome ? ` al lettore “${esc(enr.device_nome)}”` : " a un lettore registrato"
+             }</strong>
+             <p class="nota">La tessera viene letta e aggiunta al registro:
+               UID e tipo di chip li ricava il modulo. Si chiude fra
+               <b>${enr.secondi}s</b>, o alla prima lettura.</p>
            </div>
            <button class="danger" data-act="cancel-enroll">${icona("close")} Annulla</button>
          </div>`
-      : `<div class="enroll-avvio">
-           <div class="riga">${bottoniVarco}</div>
-           <p class="nota">
-             La tessera viene letta e censita da sola: UID e tipo di chip li ricava
-             il modulo. Nasce <b>senza titolare</b>, e finché non gliene assegni uno
-             non apre nulla — trascinala sulla persona qui sotto.
-           </p>
-         </div>`;
+      : lettori.length === 0
+        ? `<div class="serve-ruolo">
+             <p class="nota">${icona("alert")}
+               <span><b>Nessun lettore registrato.</b> Per aggiungere una
+               tessera serve qualcosa che la legga: registra prima il lettore
+               dalla scheda <b>Dispositivi</b>, poi torna qui.</span></p>
+             <button data-vai="dispositivi">${icona("lettore")} Vai a Dispositivi</button>
+           </div>`
+        : `<div class="enroll-avvio">
+             <div class="riga">
+               ${lettori
+                 .map(
+                   (l) => `<button data-enroll="${esc(l.device_id)}"
+                             ${l.assente ? "disabled" : ""}>
+                             ${icona("cardPlus")} Aggiungi tessera${
+                               lettori.length > 1 ? ` — ${esc(l.nome)}` : ""
+                             }
+                           </button>`,
+                 )
+                 .join("")}
+             </div>
+             <p class="nota">
+               ${
+                 lettori.length > 1
+                   ? "Scegli con quale lettore leggerla, poi passa la tessera davanti a <b>quel</b> lettore: una lettura da un altro lettore viene valutata normalmente, non aggiunta."
+                   : "Premi e passa la tessera davanti al lettore."
+               }
+               UID e tipo di chip li ricava il modulo. La tessera nasce
+               <b>senza titolare</b>, e finché non gliene assegni uno non apre
+               nulla — trascinala su una persona qui sotto.
+             </p>
+           </div>`;
 
     // ── gruppi: prima le orfane, poi un gruppo per titolare ─────────────
     const persone = d.persone || [];
@@ -344,7 +356,7 @@ class AccessControlPanel extends HTMLElement {
 
     return `
       <section class="card">
-        <h2>Censimento</h2>
+        <h2>Aggiungi una tessera</h2>
         ${boxEnrollment}
       </section>
 
@@ -903,9 +915,16 @@ class AccessControlPanel extends HTMLElement {
     // Un pulsante per varco: il censimento ascolta un lettore preciso, non
     // "tutti". Con due varchi, "abilita lettura" senza dire quale non sarebbe
     // un'istruzione completa — e aprirebbe una porta che nessuno ha chiesto.
+    r.querySelectorAll("[data-vai]").forEach((el) =>
+      el.addEventListener("click", () => {
+        this._tab = el.dataset.vai;
+        this._render();
+      }),
+    );
+
     r.querySelectorAll("[data-enroll]").forEach((el) =>
       el.addEventListener("click", () =>
-        this._comando({ action: "start_enrollment", gate: el.dataset.enroll }),
+        this._comando({ action: "start_enrollment", device: el.dataset.enroll }),
       ),
     );
 

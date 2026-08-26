@@ -36,6 +36,7 @@ from .const import (
     REASON_NO_PERSON,
     REASON_PRE_HOOK_VETO,
     REASON_RATE_LIMIT,
+    REASON_READER_NOT_MAPPED,
     REASON_ROLE_NOT_ALLOWED,
     REASON_ROLE_NOT_ASSIGNED,
     REASON_SYSTEM_ASLEEP,
@@ -102,7 +103,6 @@ class AccessEvaluator:
     ) -> Decision:
         """Valuta una lettura e porta a termine tutto ciò che ne consegue."""
         uid = normalize_uid(raw_uid)
-        gate_id = gate_id or next(iter(self.store.gates), "ingresso")
         gate = self.store.gate(gate_id) or {}
 
         # Chi ha letto è un lettore: si annota sempre, anche quando la lettura
@@ -122,9 +122,9 @@ class AccessEvaluator:
         # In enrollment la lettura viene censita, non valutata. Si controlla
         # per primo: durante l'enrollment non ha senso negare una tessera
         # perché "non censita" — è esattamente ciò che stiamo rimediando.
-        # Vale solo per il varco su cui il censimento è stato aperto: una
+        # Vale solo per il lettore su cui il censimento è stato aperto: una
         # lettura da un altro lettore resta una lettura normale.
-        if self.store.enrollment_accepts(gate_id):
+        if self.store.enrollment_accepts(device_id):
             return await self._async_enroll(uid, gate, gate_id, device_id)
 
         decision = self._decide(uid, gate_id)
@@ -293,6 +293,12 @@ class AccessEvaluator:
 
         if self._rate_limited():
             return Decision(RESULT_DENIED, REASON_RATE_LIMIT, card, role)
+
+        # Lettore che non appartiene a nessun varco: non si sa cosa aprire, e
+        # non si tira a indovinare. Succede quando i varchi sono più di uno e
+        # il lettore non è stato associato — il registro lo dice per nome.
+        if not gate_id:
+            return Decision(RESULT_DENIED, REASON_READER_NOT_MAPPED, card, role)
 
         # La blacklist si riconosce sempre, anche a master spento: è
         # l'informazione che interessa di più e va comunque tracciata.

@@ -16,35 +16,38 @@ async def async_setup_entry(
 ) -> None:
     data = hass.data[DOMAIN]
     store, coordinator = data["store"], data["coordinator"]
-    # Un pulsante per varco: con più lettori, "abilita lettura" senza dire
-    # quale non è un'istruzione completa.
-    entities: list[AccessEntity] = [
-        AccessStartEnrollmentButton(entry.entry_id, store, coordinator, gate_id, gate)
-        for gate_id, gate in store.gates.items()
-    ]
-    entities += [
-        AccessUnlockReadersButton(entry.entry_id, store, coordinator),
-        AccessClearLogButton(entry.entry_id, store, coordinator),
-    ]
-    async_add_entities(entities)
+    async_add_entities(
+        [
+            AccessStartEnrollmentButton(entry.entry_id, store, coordinator),
+            AccessUnlockReadersButton(entry.entry_id, store, coordinator),
+            AccessClearLogButton(entry.entry_id, store, coordinator),
+        ]
+    )
 
 
 class AccessStartEnrollmentButton(AccessEntity, ButtonEntity):
-    """Apre la finestra di censimento su un varco, senza passare dal pannello."""
+    """Apre il censimento su un lettore registrato qualsiasi.
 
+    Un'entità per lettore sarebbe sbagliata: i lettori registrati cambiano a
+    runtime mentre le entità si creano all'avvio, quindi l'elenco resterebbe
+    indietro. Qui basta "apri il censimento"; scegliere su quale lettore, se
+    ce n'è più d'uno, è cosa del pannello.
+    """
+
+    _attr_name = "Aggiungi tessera"
     _attr_icon = "mdi:card-plus"
-
-    def __init__(self, entry_id, store, coordinator, gate_id, gate) -> None:
-        super().__init__(entry_id, store, coordinator)
-        self._gate_id = gate_id
-        self._attr_name = f"Abilita lettura tessera — {gate.get('name') or gate_id}"
 
     @property
     def unique_id(self) -> str:
-        return f"{self._entry_id}_start_enrollment_{self._gate_id}"
+        return f"{self._entry_id}_start_enrollment"
+
+    @property
+    def available(self) -> bool:
+        # Senza lettori registrati non c'è niente che possa leggere.
+        return bool(self.store.devices)
 
     async def async_press(self) -> None:
-        self.store.start_enrollment(ENROLLMENT_TIMEOUT_S, self._gate_id)
+        self.store.start_enrollment(ENROLLMENT_TIMEOUT_S)
 
 
 class AccessUnlockReadersButton(AccessEntity, ButtonEntity):

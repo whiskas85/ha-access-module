@@ -151,6 +151,7 @@ REASON_NO_PERSON: Final = "card_senza_titolare"
 REASON_RATE_LIMIT: Final = "rate_limit_superato"
 REASON_LOCKED_OUT: Final = "lettori_bloccati"
 REASON_NO_ACTION_SCRIPT: Final = "nessuno_script_di_apertura_configurato"
+REASON_READER_NOT_MAPPED: Final = "lettore_non_associato_a_nessun_varco"
 REASON_PRE_HOOK_VETO: Final = "apertura_vietata_dal_pre_hook"
 REASON_ACTION_FAILED: Final = "script_di_apertura_fallito"
 
