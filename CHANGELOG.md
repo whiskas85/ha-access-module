@@ -8,6 +8,49 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Il censimento si apre su un lettore preciso.** Un pulsante per varco, che
+  dice quale — «abilita lettura» con più lettori non era un'istruzione
+  completa. Una lettura che arriva da un altro varco mentre il censimento è
+  aperto viene **valutata normalmente, non censita**: altrimenti una tessera
+  passata al garage mentre censisci all'ingresso finirebbe nel registro senza
+  che nessuno l'abbia voluta
+  - Sotto ogni pulsante c'è il lettore a cui il varco è legato. Se manca e i
+    varchi sono più di uno, il pannello lo segnala: senza `reader_device_id`
+    ogni lettura viene attribuita al primo varco, e un censimento aperto sul
+    secondo resterebbe in attesa per sempre
+- **Il riepilogo tessere è raggruppato per titolare**, e ogni gruppo è la
+  scheda della persona: foto, ruolo, se è in casa, quante tessere ha. La
+  scheda è anche il bersaglio del trascinamento, quindi si vede dove si sta
+  lasciando la tessera
+- **Le tessere senza titolare hanno un gruppo tutto loro, in cima e
+  evidenziato**, con scritto che non aprono. Erano la cosa più facile da
+  perdere di vista, ed è proprio quella che va sistemata
+- **Il nome della tessera si scrive dalla tabella.** Prima non c'era modo di
+  darle un titolo dopo il censimento
+- Le azioni hanno un'icona ciascuna
+
+### Corretto
+
+- **Un censimento veniva contato fra i tentativi negati.** Il conteggio
+  sommava tutto ciò che non era `granted`, quindi gonfiava le statistiche
+  proprio mentre si configurava il sistema — cioè quando quel numero viene
+  guardato di più. Ora si elencano i rifiuti veri, così un esito nuovo non
+  finisce fra i negati per il solo fatto di essere nuovo
+- **La riga della tabella si spezzava sotto la colonna Azioni.** I pulsanti
+  avevano `display:flex` sulla cella, che toglie il `<td>` dal layout della
+  tabella e interrompe il bordo inferiore. Ora stanno in un contenitore dentro
+  la cella
+- I caratteri di tutta la pagina erano troppo piccoli per una pagina che si
+  legge in piedi col telefono in mano
+
+### Modificato
+
+- L'evento di censimento porta con sé tutto — nome, tecnologia, livello,
+  lunghezza dell'UID, varco, stato del sistema — così a valle non serve
+  rileggere il registro per farci qualcosa
+
 ## [0.2.0] - 2026-08-26
 
 ### Aggiunto

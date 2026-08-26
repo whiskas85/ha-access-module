@@ -10,6 +10,7 @@ from aiohttp import web
 from homeassistant.components import panel_custom
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from .const import (
     CARD_STATES,
@@ -74,6 +75,58 @@ async def async_remove_panel(hass: HomeAssistant) -> None:
     hass.data[DOMAIN]["panel_registered"] = False
 
 
+def _persone(hass: HomeAssistant, store) -> list[dict[str, Any]]:
+    """I titolari, con quel poco che serve a riconoscerli a colpo d'occhio.
+
+    Si elencano tutte le `person` dell'impianto e non solo quelle configurate:
+    una tessera va poter essere abbinata anche a chi non è ancora fra le
+    persone seguite per la presenza, che è una lista con un altro scopo.
+    """
+    persone = []
+    for state in hass.states.async_all("person"):
+        eid = state.entity_id
+        tessere = [c for c in store.cards.values() if c.person == eid]
+        persone.append(
+            {
+                "entity_id": eid,
+                "nome": state.attributes.get("friendly_name") or eid,
+                "foto": state.attributes.get("entity_picture") or "",
+                "stato": state.state,
+                "ruolo": store.role_of(eid),
+                "seguita": eid in (store.settings.get("person_entities") or []),
+                "tessere": len(tessere),
+                "tessere_attive": sum(1 for c in tessere if c.state == "attiva"),
+            }
+        )
+    return sorted(persone, key=lambda p: p["nome"].lower())
+
+
+def _varchi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
+    """I varchi, con il nome del lettore a cui sono legati.
+
+    Il `reader_device_id` non è un dettaglio estetico: è ciò che permette di
+    capire da quale lettore arriva una lettura. Se manca, ogni lettura viene
+    attribuita al primo varco — con un lettore solo non cambia niente, con due
+    significa che il secondo non riceve mai nulla e che il censimento aperto
+    lì resterebbe in attesa per sempre. Perciò il pannello deve poterlo dire.
+    """
+    registry = dr.async_get(hass)
+    varchi = []
+    for gate in store.gates.values():
+        device_id = gate.get("reader_device_id") or ""
+        device = registry.async_get(device_id) if device_id else None
+        varchi.append(
+            {
+                **gate,
+                "reader_device_name": (
+                    (device.name_by_user or device.name) if device else ""
+                ),
+                "reader_device_mancante": not device_id,
+            }
+        )
+    return varchi
+
+
 def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
     """Tutto ciò che il pannello disegna, in una sola risposta."""
     data = hass.data[DOMAIN]
@@ -97,7 +150,10 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
         "enrollment": {
             "attivo": store.enrollment_active,
             "secondi": store.enrollment_seconds_left,
+            "varco": store.enrollment_gate,
+            "varco_nome": (store.gate(store.enrollment_gate) or {}).get("name", ""),
         },
+        "persone": _persone(hass, store),
         "impostazioni": store.settings,
         "tessere": [
             {
@@ -110,7 +166,7 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
                 store.cards.values(), key=lambda c: (c.person, c.name, c.uid)
             )
         ],
-        "varchi": list(store.gates.values()),
+        "varchi": _varchi(hass, store),
         "log": [e.to_dict() for e in store.log[:200]],
         "opzioni": {
             "stati_tessera": list(CARD_STATES),
@@ -192,7 +248,7 @@ class AccessCommandView(HomeAssistantView):
                 )
 
             elif action == "start_enrollment":
-                store.start_enrollment(ENROLLMENT_TIMEOUT_S)
+                store.start_enrollment(ENROLLMENT_TIMEOUT_S, body.get("gate", ""))
 
             elif action == "cancel_enrollment":
                 store.cancel_enrollment()

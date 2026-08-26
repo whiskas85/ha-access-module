@@ -13,6 +13,7 @@ from collections import deque
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CARD_ACTIVE,
@@ -49,7 +50,7 @@ from .const import (
     WEAK_ALLOWED_GATES,
 )
 from .coordinator import AccessCoordinator
-from .models import AccessEvent, Card, normalize_uid
+from .models import AccessEvent, Card, normalize_uid, uid_bytes
 from .store import AccessStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,7 +104,9 @@ class AccessEvaluator:
         # In enrollment la lettura viene censita, non valutata. Si controlla
         # per primo: durante l'enrollment non ha senso negare una tessera
         # perché "non censita" — è esattamente ciò che stiamo rimediando.
-        if self.store.enrollment_active:
+        # Vale solo per il varco su cui il censimento è stato aperto: una
+        # lettura da un altro lettore resta una lettura normale.
+        if self.store.enrollment_accepts(gate_id):
             return await self._async_enroll(uid, gate, gate_id)
 
         decision = self._decide(uid, gate_id)
@@ -162,13 +165,21 @@ class AccessEvaluator:
         else:
             card = await self.store.async_add_card(uid=uid)
             motivo = f"censita come {card.technology_label}"
+            # Tutto quello che serve a valle per fare qualcosa di questa
+            # tessera senza doverla ricercare nel registro.
             self.hass.bus.async_fire(
                 EVENT_ENROLLED,
                 {
                     "uid": uid,
                     "card_id": card.id,
+                    "card_nome": card.label,
                     "tecnologia": card.technology,
+                    "tecnologia_label": card.technology_label,
                     "sicurezza": card.security,
+                    "byte_uid": uid_bytes(uid),
+                    "varco": gate_id,
+                    "stato_sistema": self.store.system_state,
+                    "timestamp": dt_util.utcnow().isoformat(),
                 },
             )
 

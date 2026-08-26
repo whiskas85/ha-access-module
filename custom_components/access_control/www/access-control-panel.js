@@ -19,6 +19,9 @@ const ESITO_ETICHETTA = {
   denied: "negato",
   blacklist: "BLACKLIST",
   lockout: "lockout",
+  // Un censimento non è un tentativo di accesso: al lettore risponde `ok` e
+  // non entra nel conteggio dei rifiuti.
+  enrolled: "censita",
 };
 
 const STATO_ETICHETTA = {
@@ -27,6 +30,27 @@ const STATO_ETICHETTA = {
   rientro_adulto: "Rientro adulto",
   casa_occupata: "Casa occupata",
 };
+
+// Icone Material Design Icons, inline: il pannello vive in uno shadow root e
+// non eredita il set di icone del frontend, quindi i path se li porta dietro.
+const ICONE = {
+  check:
+    "M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m-1 14.5 7-7L16.59 8 11 13.67 7.91 10.59 6.5 12z",
+  pause: "M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m1 14V8h2v8zM9 16V8h2v8z",
+  block:
+    "M2 12A10 10 0 0 1 12 2c2.4 0 4.6.8 6.3 2.3L4.3 18.3C2.8 16.6 2 14.4 2 12m10 10c-2.4 0-4.6-.8-6.3-2.3L19.7 5.7C21.2 7.4 22 9.6 22 12a10 10 0 0 1-10 10",
+  delete:
+    "M19 4h-3.5l-1-1h-5l-1 1H5v2h14M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6z",
+  cardPlus:
+    "M11 8h2v3h3v2h-3v3h-2v-3H8v-2h3zM20 6H4v12h16zm0-2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+  drag: "M7 19v-2h2v2zm4 0v-2h2v2zm4 0v-2h2v2zM7 15v-2h2v2zm4 0v-2h2v2zm4 0v-2h2v2zM7 11V9h2v2zm4 0V9h2v2zm4 0V9h2v2zM7 7V5h2v2zm4 0V5h2v2zm4 0V5h2v2z",
+  alert: "M13 14h-2V9h2m0 9h-2v-2h2M1 21h22L12 2z",
+  close:
+    "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
+};
+
+const icona = (nome, cls = "") =>
+  `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${ICONE[nome] || ""}"/></svg>`;
 
 const esc = (value) =>
   String(value ?? "").replace(
@@ -234,85 +258,55 @@ class AccessControlPanel extends HTMLElement {
   // ── tessere ──────────────────────────────────────────────────────────
 
   _vistaTessere(d) {
-    const stati = this._hass?.states || {};
-    const persone = Object.keys(stati)
-      .filter((e) => e.startsWith("person."))
-      .sort();
-    const nome = (p) => stati[p]?.attributes?.friendly_name || p;
-
     const enr = d.enrollment || {};
+    const varchi = d.varchi || [];
+
+    // ── censimento: sempre esplicito su QUALE lettore ───────────────────
+    const piuVarchi = varchi.length > 1;
+    const bottoniVarco = varchi
+      .map(
+        (g) => `<div class="scelta-varco">
+                  <button data-enroll="${esc(g.id)}">
+                    ${icona("cardPlus")} Abilita lettura — ${esc(g.name)}
+                  </button>
+                  <span class="uid">${
+                    g.reader_device_mancante
+                      ? (piuVarchi
+                          ? `<span class="avviso">${icona("alert")} nessun lettore associato: le letture finiscono sul primo varco</span>`
+                          : "lettore non associato — con un varco solo va bene lo stesso")
+                      : `lettore: ${esc(g.reader_device_name || g.reader_device_id)}`
+                  }</span>
+                </div>`,
+      )
+      .join("");
+
     const boxEnrollment = enr.attivo
       ? `<div class="attesa">
            <div class="pulsa"></div>
-           <div>
-             <strong>In attesa della tessera…</strong>
-             <p class="nota">Passa la tessera davanti al lettore.
+           <div class="attesa-testo">
+             <strong>In attesa della tessera su “${esc(enr.varco_nome || enr.varco)}”</strong>
+             <p class="nota">Passa la tessera davanti a <b>quel</b> lettore.
+               Una lettura da un altro varco viene valutata normalmente, non censita.
                Si chiude fra <b>${enr.secondi}s</b>, o alla prima lettura.</p>
            </div>
-           <button class="danger" data-act="cancel-enroll">Annulla</button>
+           <button class="danger" data-act="cancel-enroll">${icona("close")} Annulla</button>
          </div>`
-      : `<div class="riga">
-           <button data-act="start-enroll">Abilita lettura tessera</button>
-           <p class="nota" style="flex:1 1 300px">
-             La tessera viene letta e censita da sola: UID e tipo di chip li
-             ricava il modulo. Nasce <b>senza titolare</b> e finché non gliene
-             assegni uno non apre nulla — trascinala su una persona qui sotto.
+      : `<div class="enroll-avvio">
+           <div class="riga">${bottoniVarco}</div>
+           <p class="nota">
+             La tessera viene letta e censita da sola: UID e tipo di chip li ricava
+             il modulo. Nasce <b>senza titolare</b>, e finché non gliene assegni uno
+             non apre nulla — trascinala sulla persona qui sotto.
            </p>
          </div>`;
 
-    // Ogni titolare è un bersaglio del trascinamento, più un riquadro per
-    // staccare l'abbinamento rimettendo la tessera fra quelle senza titolare.
-    const orfane = d.tessere.filter((c) => !c.person).length;
-    const bersagli = [
-      `<div class="persona vuota" data-drop="">
-         <b>Senza titolare</b>
-         <span class="uid">${orfane} tessere · non aprono</span>
-       </div>`,
-      ...persone.map((p) => {
-        const n = d.tessere.filter((c) => c.person === p).length;
-        const ruolo = (d.impostazioni.person_roles || {})[p] || "adulto";
-        return `<div class="persona" data-drop="${esc(p)}">
-                  <b>${esc(nome(p))}</b>
-                  <span class="uid">${esc(ruolo)} · ${n} tessere</span>
-                </div>`;
-      }),
-    ].join("");
+    // ── gruppi: prima le orfane, poi un gruppo per titolare ─────────────
+    const orfane = d.tessere.filter((c) => !c.person);
+    const gruppi = [this._gruppoOrfane(orfane)];
 
-    const bottoni = (c) => {
-      const b = [];
-      if (c.state !== "attiva")
-        b.push(`<button class="mini ok" data-set="${esc(c.id)}|attiva">Attiva</button>`);
-      if (c.state !== "disabilitata")
-        b.push(`<button class="mini" data-set="${esc(c.id)}|disabilitata">Disabilita</button>`);
-      if (c.state !== "blacklist")
-        b.push(`<button class="mini warn" data-set="${esc(c.id)}|blacklist">Blacklist</button>`);
-      b.push(`<button class="mini danger" data-remove-card="${esc(c.id)}">Elimina</button>`);
-      return b.join("");
-    };
-
-    const righe = d.tessere.length
-      ? d.tessere
-          .map(
-            (c) => `
-        <tr class="stato-${esc(c.state)}" draggable="true" data-card="${esc(c.id)}">
-          <td class="maniglia">⠿</td>
-          <td>
-            <b>${esc(c.name)}</b>
-            <div class="uid">${esc(c.uid)}</div>
-          </td>
-          <td>${c.person ? esc(nome(c.person)) : '<i class="orfana">nessuno</i>'}
-              <div class="uid">${c.person ? esc(c.ruolo) : "non apre"}</div></td>
-          <td>
-            <span class="pill ${c.sicurezza === "forte" ? "forte" : "debole"}">${esc(c.sicurezza)}</span>
-            <div class="uid">${esc(c.tecnologia_label)}</div>
-          </td>
-          <td><span class="pill s-${esc(c.state)}">${esc(c.state)}</span></td>
-          <td>${quando(c.last_used)}<div class="uid">${c.uses} usi</div></td>
-          <td class="azioni">${bottoni(c)}</td>
-        </tr>`,
-          )
-          .join("")
-      : `<tr><td colspan="7" class="vuoto">Nessuna tessera censita.</td></tr>`;
+    for (const p of d.persone || []) {
+      gruppi.push(this._gruppoPersona(p, d.tessere.filter((c) => c.person === p.entity_id)));
+    }
 
     return `
       <section class="card">
@@ -320,39 +314,138 @@ class AccessControlPanel extends HTMLElement {
         ${boxEnrollment}
       </section>
 
-      <section class="card">
-        <h2>Titolari</h2>
-        <p class="nota">Trascina una tessera dalla tabella su una persona per
-          abbinarla. Il ruolo appartiene alla persona, non alla tessera: due
-          tessere dello stesso titolare non possono avere permessi diversi.</p>
-        <div class="persone">${bersagli}</div>
-      </section>
+      ${gruppi.join("")}
 
       <section class="card">
-        <h2>Registro tessere</h2>
-        <table>
-          <thead><tr>
-            <th></th><th>Tessera</th><th>Titolare</th><th>Sicurezza</th>
-            <th>Stato</th><th>Ultimo uso</th><th>Azioni</th>
-          </tr></thead>
-          <tbody>${righe}</tbody>
-        </table>
-        <p class="nota"><b>Disabilita</b> è una sospensione silenziosa, per una
-          tessera riposta in un cassetto. <b>Blacklist</b> allarma se la tessera
-          ripassa: è quella giusta per una tessera persa. <b>Elimina</b> la
-          rende di nuovo sconosciuta, e quindi di nuovo silenziosa.</p>
-      </section>
-
-      <section class="card">
-        <h2>Perché nessuna tessera risulta “forte”</h2>
-        <p class="nota">Il livello non descrive il chip: descrive il fatto che
-          il modulo abbia <b>verificato crittograficamente</b> la credenziale.
-          Un NTAG424 di cui si legge solo l'UID si clona esattamente come una
-          MIFARE Classic — la protezione sta nel cryptogram AES, che oggi
-          nessuno verifica. Finché non arriva il componente che lo verifica,
-          <b>forte</b> è irraggiungibile, ed è corretto così: a reggere la
-          sicurezza è la macchina a stati, non la tessera.</p>
+        <h2>Cosa fanno i tre stati</h2>
+        <ul class="spiega">
+          <li>${icona("pause")}<span><b>Disabilita</b> — sospensione silenziosa.
+            Per una tessera riposta in un cassetto: non apre e non allarma.</span></li>
+          <li>${icona("block")}<span><b>Blacklist</b> — non apre e <b>allarma se
+            ripassa</b>. È quella giusta per una tessera persa o rubata.</span></li>
+          <li>${icona("delete")}<span><b>Elimina</b> — la rende di nuovo
+            sconosciuta, e quindi di nuovo silenziosa. Non usarla per una
+            tessera persa: perderesti proprio l'allarme che ti serve.</span></li>
+        </ul>
+        <p class="nota">Il livello di sicurezza non descrive il chip: descrive il
+          fatto che il modulo abbia <b>verificato crittograficamente</b> la
+          credenziale. Un NTAG424 di cui si legge solo l'UID si clona come una
+          MIFARE Classic, quindi finché non arriva il componente che verifica il
+          cryptogram <b>forte</b> resta irraggiungibile — ed è corretto così: a
+          reggere la sicurezza è la macchina a stati, non la tessera.</p>
       </section>`;
+  }
+
+  _gruppoOrfane(tessere) {
+    const vuoto = tessere.length === 0;
+    return `
+      <section class="card gruppo ${vuoto ? "spento" : "orfane"}" data-drop="">
+        <header class="titolare">
+          <div class="avatar avatar-orfano">${icona(vuoto ? "check" : "alert")}</div>
+          <div class="chi">
+            <b>Senza titolare</b>
+            <span class="sotto">${
+              vuoto
+                ? "nessuna tessera in sospeso"
+                : `${tessere.length} ${tessere.length === 1 ? "tessera non apre" : "tessere non aprono"} — assegnale a una persona`
+            }</span>
+          </div>
+          <span class="conteggio">${tessere.length}</span>
+        </header>
+        ${vuoto ? "" : this._tabellaTessere(tessere)}
+      </section>`;
+  }
+
+  _gruppoPersona(p, tessere) {
+    const avatar = p.foto
+      ? `<img class="avatar" src="${esc(p.foto)}" alt="" />`
+      : `<div class="avatar avatar-iniziali">${esc(
+          p.nome.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase(),
+        )}</div>`;
+
+    const dove =
+      p.stato === "home"
+        ? "in casa"
+        : p.stato === "not_home"
+          ? "fuori"
+          : p.stato;
+
+    const attive = p.tessere_attive;
+    const dettaglio =
+      tessere.length === 0
+        ? "nessuna tessera"
+        : `${tessere.length} ${tessere.length === 1 ? "tessera" : "tessere"}` +
+          (attive < tessere.length ? ` · ${attive} attive` : "");
+
+    return `
+      <section class="card gruppo" data-drop="${esc(p.entity_id)}">
+        <header class="titolare">
+          ${avatar}
+          <div class="chi">
+            <b>${esc(p.nome)}</b>
+            <span class="sotto">
+              <span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>
+              <span class="punto ${p.stato === "home" ? "acceso" : ""}"></span>${esc(dove)}
+              · ${esc(dettaglio)}
+            </span>
+          </div>
+          <span class="conteggio">${tessere.length}</span>
+        </header>
+        ${
+          tessere.length
+            ? this._tabellaTessere(tessere)
+            : `<p class="nota vuoto-gruppo">Trascina qui una tessera per abbinargliela.</p>`
+        }
+      </section>`;
+  }
+
+  _tabellaTessere(tessere) {
+    const azioni = (c) => {
+      const b = [];
+      if (c.state !== "attiva")
+        b.push(`<button class="mini ok" data-set="${esc(c.id)}|attiva"
+                  title="Attiva">${icona("check")}<span>Attiva</span></button>`);
+      if (c.state !== "disabilitata")
+        b.push(`<button class="mini" data-set="${esc(c.id)}|disabilitata"
+                  title="Sospendi senza allarmi">${icona("pause")}<span>Disabilita</span></button>`);
+      if (c.state !== "blacklist")
+        b.push(`<button class="mini warn" data-set="${esc(c.id)}|blacklist"
+                  title="Revoca e allarma se ripassa">${icona("block")}<span>Blacklist</span></button>`);
+      b.push(`<button class="mini danger" data-remove-card="${esc(c.id)}"
+                title="Rimuovi dal registro">${icona("delete")}<span>Elimina</span></button>`);
+      return b.join("");
+    };
+
+    const righe = tessere
+      .map(
+        (c) => `
+      <tr class="stato-${esc(c.state)}" draggable="true" data-card="${esc(c.id)}">
+        <td class="maniglia" title="Trascina su una persona">${icona("drag")}</td>
+        <td>
+          <input class="nome-tessera" data-rename="${esc(c.id)}"
+                 value="${esc(c.name)}" placeholder="dai un nome a questa tessera"
+                 title="Invio per salvare" />
+          <div class="uid">${esc(c.uid)}</div>
+        </td>
+        <td>
+          <span class="pill ${c.sicurezza === "forte" ? "forte" : "debole"}">${esc(c.sicurezza)}</span>
+          <div class="uid">${esc(c.tecnologia_label)}</div>
+        </td>
+        <td><span class="pill s-${esc(c.state)}">${esc(c.state)}</span></td>
+        <td>${quando(c.last_used)}<div class="uid">${c.uses} usi</div></td>
+        <td><div class="azioni">${azioni(c)}</div></td>
+      </tr>`,
+      )
+      .join("");
+
+    return `
+      <table>
+        <thead><tr>
+          <th></th><th>Tessera</th><th>Sicurezza</th>
+          <th>Stato</th><th>Ultimo uso</th><th>Azioni</th>
+        </tr></thead>
+        <tbody>${righe}</tbody>
+      </table>`;
   }
 
   // ── registro ─────────────────────────────────────────────────────────
@@ -566,8 +659,13 @@ class AccessControlPanel extends HTMLElement {
       }),
     );
 
-    r.querySelector('[data-act="start-enroll"]')?.addEventListener("click", () =>
-      this._comando({ action: "start_enrollment" }),
+    // Un pulsante per varco: il censimento ascolta un lettore preciso, non
+    // "tutti". Con due varchi, "abilita lettura" senza dire quale non sarebbe
+    // un'istruzione completa — e aprirebbe una porta che nessuno ha chiesto.
+    r.querySelectorAll("[data-enroll]").forEach((el) =>
+      el.addEventListener("click", () =>
+        this._comando({ action: "start_enrollment", gate: el.dataset.enroll }),
+      ),
     );
 
     r.querySelector('[data-act="cancel-enroll"]')?.addEventListener("click", () =>
@@ -593,6 +691,35 @@ class AccessControlPanel extends HTMLElement {
         this._comando({ action: "set_card_state", card_id, state });
       }),
     );
+
+    // Rinomina inline. Si salva su Invio o uscendo dal campo, e solo se il
+    // testo è davvero cambiato: il ridisegno periodico rimetterebbe altrimenti
+    // una scrittura al secondo mentre si digita.
+    r.querySelectorAll("[data-rename]").forEach((el) => {
+      const originale = el.value;
+      const salva = () => {
+        const nuovo = el.value.trim();
+        if (nuovo === originale.trim()) return;
+        this._comando({
+          action: "update_card",
+          card_id: el.dataset.rename,
+          changes: { name: nuovo },
+        });
+      };
+      el.addEventListener("blur", salva);
+      el.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          el.blur();
+        } else if (ev.key === "Escape") {
+          el.value = originale;
+          el.blur();
+        }
+      });
+      // Il trascinamento della riga non deve partire selezionando il testo.
+      el.addEventListener("mousedown", (ev) => ev.stopPropagation());
+      el.addEventListener("dragstart", (ev) => ev.preventDefault());
+    });
 
     // ── trascinamento tessera → titolare ──────────────────────────────
     r.querySelectorAll("[data-card]").forEach((riga) => {
@@ -698,44 +825,66 @@ class AccessControlPanel extends HTMLElement {
 
   _css() {
     return `
+      /* Tutta la pagina un gradino piu' grande: e' una pagina di
+         amministrazione, si legge stando in piedi col telefono in mano. */
       :host { display:block; background:var(--primary-background-color); color:var(--primary-text-color);
-              font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif); }
-      .wrap { max-width:1100px; margin:0 auto; padding:16px; }
-      header { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:16px; }
-      h1 { font-size:1.4rem; margin:0; flex:1; }
-      h2 { font-size:1rem; margin:0 0 10px; }
-      h3 { font-size:.95rem; margin:0 0 8px; }
-      nav { display:flex; gap:4px; flex-wrap:wrap; }
-      .tab { background:none; border:none; padding:8px 14px; border-radius:18px; cursor:pointer;
-             color:var(--secondary-text-color); font-size:.9rem; }
+              font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif); font-size:16px; }
+      * { box-sizing:border-box; }
+      .wrap { max-width:1180px; margin:0 auto; padding:18px; }
+      header { display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-bottom:18px; }
+      h1 { font-size:1.7rem; margin:0; flex:1; }
+      h2 { font-size:1.2rem; margin:0 0 12px; }
+      nav { display:flex; gap:6px; flex-wrap:wrap; }
+      .tab { background:none; border:none; padding:10px 18px; border-radius:20px; cursor:pointer;
+             color:var(--secondary-text-color); font-size:1rem; }
       .tab.on { background:var(--primary-color); color:var(--text-primary-color, #fff); }
-      .card { background:var(--card-background-color); border-radius:12px; padding:16px; margin-bottom:14px;
+      .card { background:var(--card-background-color); border-radius:12px; padding:18px; margin-bottom:16px;
               box-shadow:var(--ha-card-box-shadow, 0 1px 3px rgba(0,0,0,.12)); }
       .card.allarme { border-left:4px solid var(--error-color, #db4437); }
-      .big { font-size:1.15rem; font-weight:600; }
+      .big { font-size:1.35rem; font-weight:600; }
       .big.ok { color:var(--success-color, #43a047); }
       .big.off { color:var(--secondary-text-color); }
-      .motivo { margin:6px 0 14px; color:var(--secondary-text-color); }
-      .griglia { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
-      .kv { display:flex; flex-direction:column; gap:2px; }
-      .kv span { font-size:.75rem; color:var(--secondary-text-color); text-transform:uppercase; letter-spacing:.4px; }
-      .riga { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
-      label { display:flex; flex-direction:column; gap:4px; font-size:.8rem;
-              color:var(--secondary-text-color); flex:1 1 180px; }
-      label.check { flex-direction:row; align-items:center; gap:6px; flex:0 0 auto; }
-      input, select { padding:8px; border-radius:6px; border:1px solid var(--divider-color);
-                      background:var(--card-background-color); color:var(--primary-text-color); font-size:.9rem; }
-      button { padding:8px 14px; border-radius:6px; border:none; cursor:pointer;
-               background:var(--primary-color); color:var(--text-primary-color,#fff); font-size:.85rem; }
-      button.danger { background:var(--error-color, #db4437); }
-      button.primario { width:100%; padding:12px; font-size:.95rem; }
-      table { width:100%; border-collapse:collapse; font-size:.85rem; }
-      th { text-align:left; padding:8px; border-bottom:2px solid var(--divider-color);
-           font-size:.72rem; text-transform:uppercase; color:var(--secondary-text-color); }
-      td { padding:8px; border-bottom:1px solid var(--divider-color); vertical-align:top; }
-      .uid { font-size:.72rem; color:var(--secondary-text-color); font-family:monospace; }
-      .azioni { display:flex; gap:6px; align-items:center; }
-      .pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.72rem; font-weight:600; }
+      .motivo { margin:8px 0 16px; color:var(--secondary-text-color); font-size:1rem; }
+      .griglia { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+      .kv { display:flex; flex-direction:column; gap:3px; }
+      .kv span { font-size:.8rem; color:var(--secondary-text-color); text-transform:uppercase; letter-spacing:.5px; }
+      .kv b { font-size:1.05rem; }
+      .riga { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+      label { display:flex; flex-direction:column; gap:5px; font-size:.9rem;
+              color:var(--secondary-text-color); flex:1 1 190px; }
+      label.check { flex-direction:row; align-items:center; gap:8px; flex:0 0 auto; font-size:.95rem; }
+      input, select { padding:10px; border-radius:7px; border:1px solid var(--divider-color);
+                      background:var(--card-background-color); color:var(--primary-text-color); font-size:1rem;
+                      font-family:inherit; }
+      button { display:inline-flex; align-items:center; gap:7px; padding:10px 16px; border-radius:7px;
+               border:none; cursor:pointer; background:var(--primary-color);
+               color:var(--text-primary-color,#fff); font-size:.95rem; font-family:inherit; }
+      button.danger { background:var(--error-color, #db4437); color:#fff; }
+      button.primario { width:100%; padding:14px; font-size:1.05rem; justify-content:center; }
+      .ico { width:18px; height:18px; fill:currentColor; flex:0 0 auto; }
+
+      /* ── tabelle ──────────────────────────────────────────────────────
+         Le azioni stanno in un div dentro la cella, non nella cella stessa:
+         un display:flex sul <td> lo toglie dal layout della tabella e il
+         bordo inferiore della riga si interrompe proprio sotto l'ultima
+         colonna. */
+      table { width:100%; border-collapse:collapse; font-size:.95rem; }
+      th { text-align:left; padding:10px 8px; border-bottom:2px solid var(--divider-color);
+           font-size:.78rem; text-transform:uppercase; letter-spacing:.4px; color:var(--secondary-text-color); }
+      td { padding:10px 8px; border-bottom:1px solid var(--divider-color); vertical-align:middle; }
+      tbody tr:last-child td { border-bottom:none; }
+      .azioni { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+      .uid { font-size:.8rem; color:var(--secondary-text-color); font-family:ui-monospace, monospace; margin-top:2px; }
+
+      .mini { padding:6px 11px; font-size:.82rem; background:var(--divider-color);
+              color:var(--primary-text-color); }
+      .mini .ico { width:16px; height:16px; }
+      .mini.ok { background:rgba(67,160,71,.22); }
+      .mini.warn { background:rgba(255,167,38,.28); }
+      .mini.danger { background:rgba(219,68,55,.22); color:var(--primary-text-color); }
+      .mini:hover { filter:brightness(1.12); }
+
+      .pill { display:inline-block; padding:3px 10px; border-radius:11px; font-size:.8rem; font-weight:600; }
       .pill.debole { background:rgba(255,167,38,.2); color:#e08600; }
       .pill.forte { background:rgba(67,160,71,.2); color:#2e7d32; }
       .pill.s-attiva { background:rgba(67,160,71,.2); color:#2e7d32; }
@@ -743,46 +892,79 @@ class AccessControlPanel extends HTMLElement {
       .pill.s-blacklist { background:rgba(219,68,55,.2); color:#c62828; }
       .pill.e-granted { background:rgba(67,160,71,.2); color:#2e7d32; }
       .pill.e-denied { background:rgba(158,158,158,.25); color:var(--secondary-text-color); }
+      .pill.e-enrolled { background:rgba(33,150,243,.2); color:#1565c0; }
       .pill.e-blacklist, .pill.e-lockout { background:rgba(219,68,55,.2); color:#c62828; }
-      tr.stato-blacklist { background:rgba(219,68,55,.06); }
-      .motivo-cella { font-size:.78rem; color:var(--secondary-text-color); }
-      .nota { font-size:.8rem; color:var(--secondary-text-color); margin:0 0 12px; line-height:1.5; }
-      .vuoto { text-align:center; padding:24px; color:var(--secondary-text-color); }
-      .err { background:var(--error-color,#db4437); color:#fff; padding:10px 14px; border-radius:8px; margin-bottom:12px; }
-      .giorni { display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; }
-      .varco { border:1px solid var(--divider-color); border-radius:8px; padding:12px; margin-bottom:10px;
-               display:flex; flex-direction:column; gap:8px; }
-      footer { text-align:center; font-size:.7rem; color:var(--secondary-text-color); padding:12px; }
+      tr.stato-blacklist { background:rgba(219,68,55,.07); }
+      tr.stato-disabilitata { opacity:.68; }
+      .motivo-cella { font-size:.85rem; color:var(--secondary-text-color); }
+      .nota { font-size:.9rem; color:var(--secondary-text-color); margin:0 0 12px; line-height:1.55; }
+      .vuoto { text-align:center; padding:26px; color:var(--secondary-text-color); }
+      .err { background:var(--error-color,#db4437); color:#fff; padding:12px 16px; border-radius:8px; margin-bottom:14px; }
+      .giorni { display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; }
+      .varco { border:1px solid var(--divider-color); border-radius:8px; padding:14px; margin-bottom:12px;
+               display:flex; flex-direction:column; gap:10px; }
+      footer { text-align:center; font-size:.78rem; color:var(--secondary-text-color); padding:14px; }
 
-      /* ── censimento ────────────────────────────────────────────────── */
-      .attesa { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
-                border:2px dashed var(--primary-color); border-radius:10px; padding:14px; }
-      .attesa > div:nth-child(2) { flex:1 1 240px; }
-      .attesa .nota { margin:4px 0 0; }
-      .pulsa { width:16px; height:16px; border-radius:50%; background:var(--primary-color);
+      /* ── nome tessera modificabile sul posto ─────────────────────────── */
+      .nome-tessera { font-weight:600; font-size:1rem; padding:5px 8px; width:100%; max-width:260px;
+                      background:transparent; border:1px solid transparent; border-radius:6px; }
+      .nome-tessera:hover { border-color:var(--divider-color); }
+      .nome-tessera:focus { border-color:var(--primary-color); background:var(--card-background-color);
+                            outline:none; }
+
+      /* ── censimento ──────────────────────────────────────────────────── */
+      .enroll-avvio .riga { margin-bottom:12px; align-items:flex-start; }
+      .scelta-varco { display:flex; flex-direction:column; gap:5px; }
+      .avviso { display:inline-flex; align-items:center; gap:5px; color:#e08600; }
+      .avviso .ico { width:15px; height:15px; }
+      .attesa { display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+                border:2px dashed var(--primary-color); border-radius:10px; padding:16px; }
+      .attesa-testo { flex:1 1 260px; }
+      .attesa-testo strong { font-size:1.05rem; }
+      .attesa .nota { margin:6px 0 0; }
+      .pulsa { width:18px; height:18px; border-radius:50%; background:var(--primary-color);
                animation:pulsa 1.2s ease-in-out infinite; flex:0 0 auto; }
       @keyframes pulsa { 0%,100% { opacity:1; transform:scale(1); }
                          50% { opacity:.35; transform:scale(1.5); } }
       /* Chi non tollera le animazioni riceve comunque il conto alla rovescia. */
       @media (prefers-reduced-motion: reduce) { .pulsa { animation:none; } }
 
-      /* ── titolari come bersagli del trascinamento ──────────────────── */
-      .persone { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
-      .persona { border:2px dashed var(--divider-color); border-radius:10px; padding:12px;
-                 display:flex; flex-direction:column; gap:2px; transition:border-color .15s, background .15s; }
-      .persona.vuota { border-style:dotted; opacity:.75; }
-      .persona.sopra { border-color:var(--primary-color); border-style:solid;
-                       background:color-mix(in srgb, var(--primary-color) 12%, transparent); }
+      /* ── gruppi per titolare, che sono anche i bersagli del drop ─────── */
+      .gruppo { border:2px solid transparent; transition:border-color .15s, background .15s; }
+      .gruppo.sopra { border-color:var(--primary-color);
+                      background:color-mix(in srgb, var(--primary-color) 10%, var(--card-background-color)); }
+      .gruppo.orfane { border-color:rgba(255,167,38,.55); }
+      .gruppo.spento { opacity:.6; }
+      .titolare { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
+      .avatar { width:46px; height:46px; border-radius:50%; object-fit:cover; flex:0 0 auto;
+                background:var(--divider-color); display:flex; align-items:center; justify-content:center; }
+      .avatar-iniziali { font-weight:700; font-size:1rem; color:var(--primary-text-color);
+                         background:color-mix(in srgb, var(--primary-color) 25%, transparent); }
+      .avatar-orfano { background:rgba(255,167,38,.22); color:#e08600; }
+      .avatar-orfano .ico { width:24px; height:24px; }
+      .gruppo.spento .avatar-orfano { background:rgba(67,160,71,.18); color:#2e7d32; }
+      .chi { flex:1; display:flex; flex-direction:column; gap:3px; min-width:0; }
+      .chi b { font-size:1.1rem; }
+      .sotto { font-size:.88rem; color:var(--secondary-text-color);
+               display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+      .tag { padding:2px 9px; border-radius:10px; font-size:.75rem; font-weight:600;
+             background:var(--divider-color); }
+      .tag.ruolo-bambino { background:rgba(156,39,176,.2); color:#7b1fa2; }
+      .tag.ruolo-adulto { background:rgba(33,150,243,.2); color:#1565c0; }
+      .punto { width:9px; height:9px; border-radius:50%; background:var(--secondary-text-color);
+               opacity:.45; display:inline-block; }
+      .punto.acceso { background:var(--success-color,#43a047); opacity:1; }
+      .conteggio { font-size:1.5rem; font-weight:700; color:var(--secondary-text-color); flex:0 0 auto; }
+      .vuoto-gruppo { margin:0; font-style:italic; }
+
       tr[draggable="true"] { cursor:grab; }
       tr.in-volo { opacity:.4; }
-      .maniglia { color:var(--secondary-text-color); cursor:grab; user-select:none; width:1.2rem; }
-      .orfana { color:var(--secondary-text-color); }
-      .mini { padding:4px 9px; font-size:.72rem; background:var(--divider-color);
-              color:var(--primary-text-color); }
-      .mini.ok { background:rgba(67,160,71,.25); }
-      .mini.warn { background:rgba(255,167,38,.3); }
-      .mini.danger { background:rgba(219,68,55,.25); color:var(--primary-text-color); }
-      .azioni { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+      .maniglia { color:var(--secondary-text-color); cursor:grab; user-select:none; width:28px; }
+
+      /* ── legenda degli stati ─────────────────────────────────────────── */
+      .spiega { list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:10px; }
+      .spiega li { display:flex; align-items:flex-start; gap:10px; font-size:.95rem; line-height:1.5; }
+      .spiega .ico { margin-top:2px; color:var(--secondary-text-color); }
     `;
   }
 }

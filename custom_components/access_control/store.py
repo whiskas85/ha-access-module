@@ -21,6 +21,9 @@ from .const import (
     CONF_SETTINGS,
     DEFAULT_GATE,
     DEFAULT_SETTINGS,
+    RESULT_BLACKLIST,
+    RESULT_DENIED,
+    RESULT_LOCKOUT,
     ROLE_ADULT,
     SIGNAL_STATE_CHANGED,
     STORAGE_KEY,
@@ -51,6 +54,12 @@ class AccessStore:
         # tessere nuove non deve sopravvivere a un riavvio — se Home Assistant
         # riparte mentre è aperta, deve ripartire chiusa.
         self.enrollment_until = None
+        # Su QUALE lettore si sta censendo. Con più varchi, aprire il
+        # censimento su tutti significherebbe che una tessera passata al
+        # garage mentre stai censendo all'ingresso finisce nel registro senza
+        # che nessuno l'abbia voluta. Una lettura da un altro varco viene
+        # valutata normalmente.
+        self.enrollment_gate: str = ""
 
     # ── caricamento e salvataggio ──────────────────────────────────────────
 
@@ -204,13 +213,21 @@ class AccessStore:
             0, int((self.enrollment_until - dt_util.utcnow()).total_seconds())
         )
 
-    def start_enrollment(self, seconds: int) -> None:
+    def start_enrollment(self, seconds: int, gate_id: str = "") -> None:
+        self.enrollment_gate = gate_id or next(iter(self.gates), "")
         self.enrollment_until = dt_util.utcnow() + timedelta(seconds=seconds)
         self.notify()
 
     def cancel_enrollment(self) -> None:
         self.enrollment_until = None
+        self.enrollment_gate = ""
         self.notify()
+
+    def enrollment_accepts(self, gate_id: str) -> bool:
+        """Questa lettura va censita, o valutata normalmente?"""
+        if not self.enrollment_active:
+            return False
+        return not self.enrollment_gate or self.enrollment_gate == gate_id
 
     async def async_update_card(self, card_id: str, changes: dict[str, Any]) -> Card:
         card = self.cards.get(card_id)
@@ -325,6 +342,17 @@ class AccessStore:
         await self.async_save_and_notify()
 
     def denied_today(self) -> int:
+        """Quanti tentativi sono stati rifiutati oggi.
+
+        Si contano solo i rifiuti veri. Un censimento non è un tentativo di
+        accesso — è un'operazione voluta, che al lettore risponde `ok` — e
+        contarlo qui gonfierebbe le statistiche proprio nel momento in cui si
+        sta configurando il sistema, cioè quando quel numero viene guardato di
+        più. Per lo stesso motivo si elenca cosa conta invece di negare tutto
+        ciò che non è `granted`: un esito nuovo non deve finire fra i rifiuti
+        per il solo fatto di essere nuovo.
+        """
+        rifiuti = (RESULT_DENIED, RESULT_BLACKLIST, RESULT_LOCKOUT)
         today = dt_util.now().date()
         count = 0
         for event in self.log:
@@ -335,6 +363,6 @@ class AccessStore:
                 # Il log è ordinato dal più recente: appena si scende sotto
                 # oggi non c'è più nulla da contare.
                 break
-            if event.result != "granted":
+            if event.result in rifiuti:
                 count += 1
         return count
