@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-26
+
 ### Corretto
 
 - **Tutti i titolari risultavano «adulto», e non era solo un'etichetta
