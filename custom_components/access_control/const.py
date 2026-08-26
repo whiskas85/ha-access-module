@@ -70,22 +70,48 @@ SECURITY_UNKNOWN: Final = "sconosciuta"
 
 # Tecnologia → livello di sicurezza.
 #
-# Il PN532 letto via ESPHome espone solo l'UID: non basta a classificare la
-# card. Finché un custom component ESPHome non riporterà SAK/ATQA, la
-# tecnologia si dichiara in fase di enrollment e da lì si deriva il livello.
-# La lunghezza dell'UID è un indizio, non una prova: non va usata come tale.
-TECH_MIFARE_CLASSIC: Final = "mifare_classic"
+# La tecnologia viene RILEVATA dalla lettura, non chiesta a chi censisce: chi
+# compra le tessere non ha modo di sapere che chip ci sia dentro, e una
+# dichiarazione sbagliata qui diventerebbe un permesso sbagliato.
+#
+# Il PN532 letto via ESPHome espone solo l'UID — niente SAK/ATQA — quindi
+# l'unico dato certo è la LUNGHEZZA dell'UID, che però basta per la
+# distinzione che conta davvero (vedi `detect_technology` in models.py).
+TECH_MIFARE_CLASSIC: Final = "mifare_classic"  # UID 4 byte
+TECH_ISO14443A_7B: Final = "iso14443a_7byte"  # Ultralight / NTAG / DESFire
 TECH_MIFARE_ULTRALIGHT: Final = "mifare_ultralight"
 TECH_NTAG424: Final = "ntag424"
 TECH_FINGERPRINT: Final = "impronta"
 TECH_UNKNOWN: Final = "sconosciuta"
 
+# ⚠️ NESSUNA tecnologia rilevabile oggi vale `forte`, ed è corretto così.
+#
+# `forte` non descrive il chip: descrive il fatto che il modulo abbia
+# *verificato crittograficamente* la credenziale. Un NTAG424 di cui leggiamo
+# solo l'UID si clona esattamente come una MIFARE Classic — la protezione sta
+# nel cryptogram AES, che oggi nessuno verifica.
+#
+# Perciò `ntag424` e `impronta` restano in tabella ma sono irraggiungibili
+# dalla rilevazione automatica: ci arriveranno i custom component di §12,
+# quando ci sarà davvero qualcosa da verificare. Marcare a mano una tessera
+# come "forte" significherebbe solo mentire al motore di autorizzazione.
 TECHNOLOGY_SECURITY: Final[dict[str, str]] = {
     TECH_MIFARE_CLASSIC: SECURITY_WEAK,
+    TECH_ISO14443A_7B: SECURITY_WEAK,
     TECH_MIFARE_ULTRALIGHT: SECURITY_WEAK,
     TECH_NTAG424: SECURITY_STRONG,
     TECH_FINGERPRINT: SECURITY_STRONG,
     TECH_UNKNOWN: SECURITY_UNKNOWN,
+}
+
+# Etichette leggibili per il pannello.
+TECHNOLOGY_LABELS: Final[dict[str, str]] = {
+    TECH_MIFARE_CLASSIC: "MIFARE Classic (UID 4 byte)",
+    TECH_ISO14443A_7B: "Ultralight / NTAG / DESFire (UID 7 byte)",
+    TECH_MIFARE_ULTRALIGHT: "MIFARE Ultralight",
+    TECH_NTAG424: "NTAG424 DNA (cryptogram verificato)",
+    TECH_FINGERPRINT: "Impronta digitale",
+    TECH_UNKNOWN: "Non riconosciuta",
 }
 
 TECHNOLOGIES: Final = tuple(TECHNOLOGY_SECURITY)
@@ -102,6 +128,8 @@ RESULT_GRANTED: Final = "granted"
 RESULT_DENIED: Final = "denied"
 RESULT_BLACKLIST: Final = "blacklist"
 RESULT_LOCKOUT: Final = "lockout"
+# Lettura avvenuta in modalità enrollment: censita, non valutata.
+RESULT_ENROLLED: Final = "enrolled"
 
 REASON_MASTER_OFF: Final = "master_off"
 REASON_SYSTEM_ASLEEP: Final = "sistema_in_sleep"
@@ -140,6 +168,15 @@ LOCKOUT_MODES: Final = (LOCKOUT_SIGNAL, LOCKOUT_BLOCK)
 # ───────────────────────────────────────────────────────────────────────────
 EVENT_ACCESS: Final = f"{DOMAIN}_event"
 EVENT_LOCKOUT: Final = f"{DOMAIN}_lockout"
+EVENT_ENROLLED: Final = f"{DOMAIN}_enrolled"
+
+# ───────────────────────────────────────────────────────────────────────────
+#  Enrollment
+# ───────────────────────────────────────────────────────────────────────────
+# Quando è attivo, la prima lettura sconosciuta viene CENSITA invece che
+# valutata. Ha una scadenza breve e non rinnovabile da sola: una modalità che
+# accetta tessere nuove non deve poter restare aperta per dimenticanza.
+ENROLLMENT_TIMEOUT_S: Final = 60
 
 SIGNAL_STATE_CHANGED: Final = f"{DOMAIN}_state_changed"
 

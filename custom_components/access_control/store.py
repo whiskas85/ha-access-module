@@ -26,7 +26,7 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
-from .models import AccessEvent, Card, normalize_uid
+from .models import AccessEvent, Card, detect_technology, normalize_uid
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +47,10 @@ class AccessStore:
         # Lockout
         self.failure_streak: int = 0
         self.locked_until: str | None = None
+        # Enrollment: non persistito di proposito. Una modalità che accetta
+        # tessere nuove non deve sopravvivere a un riavvio — se Home Assistant
+        # riparte mentre è aperta, deve ripartire chiusa.
+        self.enrollment_until = None
 
     # ── caricamento e salvataggio ──────────────────────────────────────────
 
@@ -143,12 +147,17 @@ class AccessStore:
     ) -> Card:
         """Censisce una tessera. Se l'UID esiste già ne aggiorna i dati.
 
+        La tecnologia, se non passata, viene rilevata dall'UID: è il caso
+        normale: chi censisce non deve doverla sapere.
+
         L'UID è la chiave logica: due righe con lo stesso UID renderebbero il
         risultato della valutazione dipendente dall'ordine di iterazione.
         """
         normalized = normalize_uid(uid)
         if not normalized:
             raise ValueError("UID vuoto")
+
+        rilevata = technology or detect_technology(normalized)
 
         existing = self.card_by_uid(normalized)
         if existing is not None:
@@ -161,14 +170,47 @@ class AccessStore:
 
         card = Card(
             uid=normalized,
-            name=name,
+            name=name or f"Tessera {normalized[-5:]}",
             person=person,
-            technology=technology or "sconosciuta",
+            technology=rilevata,
             note=note,
         )
         self.cards[card.id] = card
         await self.async_save_and_notify()
         return card
+
+    async def async_assign_person(self, card_id: str, person: str) -> Card:
+        """Abbina (o stacca, con person vuoto) una tessera a un titolare."""
+        card = self.cards.get(card_id)
+        if card is None:
+            raise KeyError(card_id)
+        card.person = person or ""
+        await self.async_save_and_notify()
+        return card
+
+    # ── enrollment ─────────────────────────────────────────────────────────
+
+    @property
+    def enrollment_active(self) -> bool:
+        if not self.enrollment_until:
+            return False
+        return dt_util.utcnow() < self.enrollment_until
+
+    @property
+    def enrollment_seconds_left(self) -> int:
+        if not self.enrollment_active:
+            return 0
+        return max(
+            0, int((self.enrollment_until - dt_util.utcnow()).total_seconds())
+        )
+
+    def start_enrollment(self, seconds: int) -> None:
+        self.enrollment_until = dt_util.utcnow() + timedelta(seconds=seconds)
+        self.notify()
+
+    def cancel_enrollment(self) -> None:
+        self.enrollment_until = None
+        self.notify()
 
     async def async_update_card(self, card_id: str, changes: dict[str, Any]) -> Card:
         card = self.cards.get(card_id)

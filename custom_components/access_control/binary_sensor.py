@@ -30,6 +30,7 @@ async def async_setup_entry(
             AccessAdultNearbySensor(entry.entry_id, store, coordinator),
             AccessDoorAjarSensor(entry.entry_id, store, coordinator),
             AccessLockoutSensor(entry.entry_id, store, coordinator),
+            AccessEnrollmentSensor(entry.entry_id, store, coordinator),
         ]
     )
 
@@ -110,6 +111,30 @@ class AccessDoorAjarSensor(AccessEntity, BinarySensorEntity):
             return False
         minutes = int(self.store.settings.get("door_ajar_min") or 5)
         return dt_util.utcnow() - state.last_changed >= timedelta(minutes=minutes)
+
+
+class AccessEnrollmentSensor(AccessEntity, BinarySensorEntity):
+    """Finestra di censimento aperta.
+
+    Vale la pena esporlo: mentre è `on` la prossima tessera letta viene
+    registrata invece che valutata, ed è uno stato che non deve passare
+    inosservato se resta aperto per distrazione.
+    """
+
+    _attr_name = "Censimento in corso"
+    _attr_icon = "mdi:card-plus"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._entry_id}_enrollment"
+
+    @property
+    def is_on(self) -> bool:
+        return self.store.enrollment_active
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"secondi_rimasti": self.store.enrollment_seconds_left}
 
 
 class AccessLockoutSensor(AccessEntity, BinarySensorEntity):

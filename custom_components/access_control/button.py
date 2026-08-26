@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, ENROLLMENT_TIMEOUT_S
 from .entity import AccessEntity
 
 
@@ -18,10 +18,25 @@ async def async_setup_entry(
     store, coordinator = data["store"], data["coordinator"]
     async_add_entities(
         [
+            AccessStartEnrollmentButton(entry.entry_id, store, coordinator),
             AccessUnlockReadersButton(entry.entry_id, store, coordinator),
             AccessClearLogButton(entry.entry_id, store, coordinator),
         ]
     )
+
+
+class AccessStartEnrollmentButton(AccessEntity, ButtonEntity):
+    """Apre la finestra di censimento senza passare dal pannello."""
+
+    _attr_name = "Abilita lettura tessera"
+    _attr_icon = "mdi:card-plus"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._entry_id}_start_enrollment"
+
+    async def async_press(self) -> None:
+        self.store.start_enrollment(ENROLLMENT_TIMEOUT_S)
 
 
 class AccessUnlockReadersButton(AccessEntity, ButtonEntity):

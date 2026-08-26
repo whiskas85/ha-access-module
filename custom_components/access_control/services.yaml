@@ -19,11 +19,30 @@ scan:
       selector:
         text:
 
-enroll_card:
-  name: Censisci una tessera
+start_enrollment:
+  name: Abilita lettura tessera
   description: >-
-    Aggiunge una tessera al registro, o aggiorna i dati di una già presente
-    con lo stesso UID. Il livello di sicurezza deriva dalla tecnologia.
+    Apre la finestra di censimento: la prima tessera passata al lettore viene
+    registrata invece che valutata, con UID e tecnologia rilevati da sola.
+    Si chiude alla prima lettura o alla scadenza, quale delle due viene prima.
+    Nasce senza titolare e finché non gliene viene assegnato uno non apre nulla.
+  fields:
+    seconds:
+      name: Durata
+      description: Secondi di attesa prima che la finestra si chiuda da sola.
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 300
+          unit_of_measurement: s
+
+enroll_card:
+  name: Censisci una tessera a mano
+  description: >-
+    Aggiunge una tessera al registro partendo da un UID noto, o aggiorna una
+    già presente. Nell'uso normale si preferisce "Abilita lettura tessera",
+    che evita di trascrivere l'UID.
   fields:
     uid:
       name: UID
@@ -44,13 +63,16 @@ enroll_card:
     technology:
       name: Tecnologia
       description: >-
-        Da cui deriva il livello di sicurezza. Va dichiarata a mano finché il
-        lettore non riporterà SAK/ATQA insieme all'UID.
-      default: sconosciuta
+        Di norma va omessa: viene rilevata dall'UID. Forzarla serve solo per le
+        credenziali che il lettore non può classificare — impronte, o tessere
+        verificate crittograficamente da un componente dedicato. Dichiarare a
+        mano una tecnologia "forte" non rende forte la credenziale: fa solo
+        credere al motore di autorizzazione qualcosa che nessuno ha verificato.
       selector:
         select:
           options:
             - mifare_classic
+            - iso14443a_7byte
             - mifare_ultralight
             - ntag424
             - impronta

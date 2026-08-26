@@ -15,6 +15,7 @@ from .const import (
     CARD_STATES,
     DEFAULT_GATE,
     DOMAIN,
+    ENROLLMENT_TIMEOUT_S,
     LOCKOUT_MODES,
     PANEL_ICON,
     PANEL_TITLE,
@@ -93,9 +94,18 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             "bloccati_fino_a": store.locked_until,
             "negati_oggi": store.denied_today(),
         },
+        "enrollment": {
+            "attivo": store.enrollment_active,
+            "secondi": store.enrollment_seconds_left,
+        },
         "impostazioni": store.settings,
         "tessere": [
-            {**c.to_dict(), "sicurezza": c.security, "ruolo": store.role_of(c.person)}
+            {
+                **c.to_dict(),
+                "sicurezza": c.security,
+                "tecnologia_label": c.technology_label,
+                "ruolo": store.role_of(c.person),
+            }
             for c in sorted(
                 store.cards.values(), key=lambda c: (c.person, c.name, c.uid)
             )
@@ -175,6 +185,17 @@ class AccessCommandView(HomeAssistantView):
 
             elif action == "set_card_state":
                 await store.async_set_card_state(body["card_id"], body["state"])
+
+            elif action == "assign_person":
+                await store.async_assign_person(
+                    body["card_id"], body.get("person", "")
+                )
+
+            elif action == "start_enrollment":
+                store.start_enrollment(ENROLLMENT_TIMEOUT_S)
+
+            elif action == "cancel_enrollment":
+                store.cancel_enrollment()
 
             elif action == "remove_card":
                 await store.async_remove_card(body["card_id"])

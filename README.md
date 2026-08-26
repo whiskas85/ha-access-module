@@ -89,34 +89,57 @@ Per una tessera persa serve la **blacklist**, non l'eliminazione: una tessera
 eliminata è di nuovo una sconosciuta qualsiasi, e ripassandola non succede
 niente di visibile.
 
-### Livello di sicurezza
-
-| Tecnologia | Sicurezza | Perché |
-|---|---|---|
-| MIFARE Classic (solo UID) | debole | clonabile in trenta secondi |
-| MIFARE Ultralight (solo UID) | debole | idem |
-| NTAG424 DNA con cryptogram | forte | AES-128 verificato lato HA |
-| Impronta R503 | forte | non clonabile per presentazione |
-
-> **La tecnologia va dichiarata a mano.** Il PN532 letto via ESPHome espone
-> solo l'UID: non basta a classificare la tessera, e la lunghezza dell'UID è un
-> indizio, non una prova. Perché la classificazione diventi automatica e non
-> falsificabile serve un custom component ESPHome che riporti SAK/ATQA
-> (`0x08` = MIFARE Classic 1K, `0x20` = ISO14443-4). Il modello dati è già
-> pronto: cambierebbe solo chi scrive il campo.
-
 ### Censire una tessera
 
-Passala al lettore una volta: la lettura finisce nel registro come sconosciuta
-e da lì copi l'UID. Oppure via servizio:
+Non si trascrive nessun UID.
+
+1. Pannello **Accessi** → scheda **Tessere** → **Abilita lettura tessera**
+2. Passa la tessera al lettore entro 60 secondi
+3. Viene censita da sola: UID e tipo di chip li ricava il modulo
+
+La finestra si chiude **alla prima lettura**, o alla scadenza. Non sopravvive
+a un riavvio: una modalità che accetta credenziali nuove non deve poter
+restare aperta per dimenticanza.
+
+La tessera nasce **senza titolare**, e senza titolare non apre niente.
+Trascinala sul riquadro della persona per abbinarla — censire e autorizzare
+restano due gesti distinti.
+
+### Livello di sicurezza
+
+Rilevato dalla lunghezza dell'UID, che è normata da ISO/IEC 14443-3:
+
+| UID | Famiglia | Sicurezza |
+|---|---|---|
+| 4 byte | MIFARE Classic 1K/4K | debole |
+| 7 byte | Ultralight / NTAG / DESFire | debole |
+| — | NTAG424 con cryptogram verificato | forte |
+| — | Impronta R503 | forte |
+
+> **Oggi nessuna tessera può risultare «forte», ed è corretto così.**
+>
+> Il livello non descrive il chip: descrive il fatto che il modulo abbia
+> **verificato crittograficamente** la credenziale. Un NTAG424 di cui si legge
+> solo l'UID si clona esattamente come una MIFARE Classic — la protezione sta
+> nel cryptogram AES, che oggi nessuno verifica.
+>
+> Per questo la rilevazione automatica non può promuovere a `forte`, e
+> dichiararlo a mano non renderebbe forte la credenziale: farebbe solo credere
+> al motore di autorizzazione qualcosa che nessuno ha controllato. Ci si
+> arriverà con il componente NTAG424 di §12, quando ci sarà davvero qualcosa
+> da verificare.
+>
+> Che 7 byte non distingua un NTAG213 da un NTAG424 non è quindi un problema:
+> senza verifica del cryptogram contano uguale.
+
+Serve censirla da un UID già noto? C'è ancora la via manuale:
 
 ```yaml
 action: access_control.enroll_card
 data:
-  uid: "04-A1-B2-C3"
+  uid: "04-A1-B2-C3"        # in qualunque formato: 04a1b2c3, 04:A1:B2:C3, …
   name: portachiavi scuola
   person: person.luca
-  technology: mifare_classic
 ```
 
 ---
@@ -250,8 +273,9 @@ ma non mandata in sicurezza, cioè la condizione normale di casa abitata.
 
 | Servizio | Cosa fa |
 |---|---|
+| `access_control.start_enrollment` | apre la finestra di censimento |
 | `access_control.scan` | valuta una lettura senza andare al varco |
-| `access_control.enroll_card` | censisce o aggiorna una tessera |
+| `access_control.enroll_card` | censisce a mano, da un UID già noto |
 | `access_control.set_card_state` | attiva / disabilita / blacklist |
 | `access_control.remove_card` | elimina dal registro |
 | `access_control.unlock_readers` | azzera il lockout |

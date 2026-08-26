@@ -21,6 +21,7 @@ from .const import (
     CARD_UNKNOWN,
     DOMAIN,
     EVENT_ACCESS,
+    EVENT_ENROLLED,
     EVENT_LOCKOUT,
     LOCKOUT_BLOCK,
     PRE_HOOK_TIMEOUT_S,
@@ -39,6 +40,7 @@ from .const import (
     REASON_WEAK_ON_GATE,
     RESULT_BLACKLIST,
     RESULT_DENIED,
+    RESULT_ENROLLED,
     RESULT_GRANTED,
     RESULT_LOCKOUT,
     SECURITY_UNKNOWN,
@@ -98,6 +100,12 @@ class AccessEvaluator:
         gate_id = gate_id or next(iter(self.store.gates), "ingresso")
         gate = self.store.gate(gate_id) or {}
 
+        # In enrollment la lettura viene censita, non valutata. Si controlla
+        # per primo: durante l'enrollment non ha senso negare una tessera
+        # perché "non censita" — è esattamente ciò che stiamo rimediando.
+        if self.store.enrollment_active:
+            return await self._async_enroll(uid, gate, gate_id)
+
         decision = self._decide(uid, gate_id)
 
         # Il pre-hook partecipa alla decisione, quindi gira prima della
@@ -133,6 +141,62 @@ class AccessEvaluator:
             await self._async_run_action(gate, event)
 
         return decision
+
+    # ── enrollment ─────────────────────────────────────────────────────────
+
+    async def _async_enroll(
+        self, uid: str, gate: dict[str, Any], gate_id: str
+    ) -> Decision:
+        """Censisce la tessera appena letta.
+
+        La finestra si chiude alla prima lettura, riuscita o no: se restasse
+        aperta, chiunque passasse una tessera nei secondi successivi se la
+        troverebbe censita. Una modalità che accetta credenziali nuove deve
+        durare il minimo indispensabile.
+        """
+        self.store.cancel_enrollment()
+
+        esistente = self.store.card_by_uid(uid)
+        if esistente is not None:
+            card, motivo = esistente, "tessera già censita"
+        else:
+            card = await self.store.async_add_card(uid=uid)
+            motivo = f"censita come {card.technology_label}"
+            self.hass.bus.async_fire(
+                EVENT_ENROLLED,
+                {
+                    "uid": uid,
+                    "card_id": card.id,
+                    "tecnologia": card.technology,
+                    "sicurezza": card.security,
+                },
+            )
+
+        # Il bip di conferma dice a chi sta davanti al lettore che la lettura
+        # è arrivata: senza, resterebbe lì ad aspettare i tre bip di timeout.
+        await self._async_respond(gate, granted=True)
+
+        event = AccessEvent(
+            result=RESULT_ENROLLED,
+            reason=motivo,
+            uid=uid,
+            card_id=card.id,
+            card_name=card.label,
+            card_state=card.state,
+            card_security=card.security,
+            person=card.person,
+            gate=gate_id,
+            system_state=self.store.system_state,
+        )
+        self.hass.bus.async_fire(EVENT_ACCESS, event.to_dict())
+        await self.store.async_append_log(event)
+
+        await self._async_send_notification(
+            "🆕 Tessera censita",
+            f"{card.label} — {motivo}. "
+            "Non apre nulla finché non le assegni un titolare.",
+        )
+        return Decision(RESULT_ENROLLED, motivo, card)
 
     # ── decisione ──────────────────────────────────────────────────────────
 

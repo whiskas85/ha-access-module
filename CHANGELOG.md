@@ -8,6 +8,50 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Le tessere si censiscono passandole al lettore, non trascrivendo l'UID.**
+  «Abilita lettura tessera» apre una finestra di 60 secondi: la prima lettura
+  viene registrata invece che valutata, con UID e tipo di chip ricavati da
+  soli. La finestra si chiude alla prima lettura o alla scadenza, quale delle
+  due viene prima — una modalità che accetta credenziali nuove non deve poter
+  restare aperta per dimenticanza, e non sopravvive nemmeno a un riavvio
+  - La tessera nasce **senza titolare**, e senza titolare non apre niente:
+    censire e autorizzare restano due gesti distinti
+  - Disponibile anche come pulsante (`button.*_abilita_lettura_tessera`) e
+    come azione `access_control.start_enrollment`
+- **Il tipo di tessera viene rilevato, non chiesto.** Chi le compra non ha
+  modo di sapere che chip ci sia dentro, e una dichiarazione sbagliata sarebbe
+  diventata un permesso sbagliato. La lunghezza dell'UID è normata da
+  ISO/IEC 14443-3 e distingue le due famiglie che contano: 4 byte MIFARE
+  Classic, 7 byte Ultralight/NTAG/DESFire
+- **Una tessera si abbina a un titolare trascinandola** sul suo riquadro. Il
+  riquadro «senza titolare» stacca l'abbinamento
+- **Stato della tessera con pulsanti al posto della tendina.** Con la tendina
+  il cambio partiva al primo movimento della rotellina sopra il campo: su un
+  elenco di tessere era un modo silenzioso per mettere in blacklist quella
+  sbagliata. La blacklist chiede conferma, perché è l'unica azione che genera
+  allarmi
+
+### Corretto
+
+- **Lo stesso UID scritto in due modi diversi finiva su due righe diverse.**
+  `04A1B2C3` senza separatori non collassava su `04-A1-B2-C3`: una tessera
+  censita da un lettore e riletta da un altro poteva risultare non censita.
+  Il diniego che ne seguiva era indistinguibile da uno legittimo, quindi il
+  sintomo sarebbe stato solo «a volte non apre». Ora i separatori vengono
+  tolti tutti e rimessi a passo fisso
+
+### Sicurezza
+
+- **`forte` non è più raggiungibile dalla rilevazione automatica, ed è
+  corretto così.** Il livello non descrive il chip: descrive il fatto che il
+  modulo abbia *verificato crittograficamente* la credenziale. Un NTAG424 di
+  cui si legge solo l'UID si clona esattamente come una MIFARE Classic — la
+  protezione sta nel cryptogram AES, che oggi nessuno verifica. Dichiarare a
+  mano una tessera «forte» non l'avrebbe resa tale: avrebbe solo fatto credere
+  al motore di autorizzazione qualcosa che nessuno ha controllato
+
 ## [0.1.0] - 2026-08-26
 
 ### Aggiunto

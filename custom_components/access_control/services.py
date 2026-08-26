@@ -11,6 +11,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     CARD_STATES,
     DOMAIN,
+    ENROLLMENT_TIMEOUT_S,
     TECHNOLOGIES,
 )
 from .models import normalize_uid
@@ -23,6 +24,15 @@ SERVICE_SET_CARD_STATE = "set_card_state"
 SERVICE_REMOVE_CARD = "remove_card"
 SERVICE_UNLOCK_READERS = "unlock_readers"
 SERVICE_CLEAR_LOG = "clear_log"
+SERVICE_START_ENROLLMENT = "start_enrollment"
+
+ENROLLMENT_SCHEMA = vol.Schema(
+    {
+        vol.Optional("seconds", default=ENROLLMENT_TIMEOUT_S): vol.All(
+            vol.Coerce(int), vol.Range(min=5, max=300)
+        ),
+    }
+)
 
 SCAN_SCHEMA = vol.Schema(
     {
@@ -36,7 +46,10 @@ ENROLL_SCHEMA = vol.Schema(
         vol.Required("uid"): cv.string,
         vol.Optional("name", default=""): cv.string,
         vol.Optional("person", default=""): cv.string,
-        vol.Optional("technology", default="sconosciuta"): vol.In(TECHNOLOGIES),
+        # Omessa, viene rilevata dall'UID: è il caso normale. Resta forzabile
+        # per i casi che il lettore non sa classificare (impronte, credenziali
+        # verificate crittograficamente).
+        vol.Optional("technology"): vol.In(TECHNOLOGIES),
         vol.Optional("note", default=""): cv.string,
     }
 )
@@ -90,10 +103,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             uid=call.data["uid"],
             name=call.data.get("name", ""),
             person=call.data.get("person", ""),
-            technology=call.data.get("technology", "sconosciuta"),
+            technology=call.data.get("technology", ""),
             note=call.data.get("note", ""),
         )
-        _LOGGER.info("Tessera censita: %s (%s)", card.label, card.security)
+        _LOGGER.info(
+            "Tessera censita: %s — %s (%s)",
+            card.label,
+            card.technology_label,
+            card.security,
+        )
+
+    async def _start_enrollment(call: ServiceCall) -> None:
+        _data()["store"].start_enrollment(
+            call.data.get("seconds", ENROLLMENT_TIMEOUT_S)
+        )
 
     async def _set_state(call: ServiceCall) -> None:
         store = _data()["store"]
@@ -111,6 +134,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     registrations = (
         (SERVICE_SCAN, _scan, SCAN_SCHEMA),
+        (SERVICE_START_ENROLLMENT, _start_enrollment, ENROLLMENT_SCHEMA),
         (SERVICE_ENROLL, _enroll, ENROLL_SCHEMA),
         (SERVICE_SET_CARD_STATE, _set_state, CARD_STATE_SCHEMA),
         (SERVICE_REMOVE_CARD, _remove, REMOVE_SCHEMA),
@@ -125,6 +149,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 def async_unload_services(hass: HomeAssistant) -> None:
     for name in (
         SERVICE_SCAN,
+        SERVICE_START_ENROLLMENT,
         SERVICE_ENROLL,
         SERVICE_SET_CARD_STATE,
         SERVICE_REMOVE_CARD,

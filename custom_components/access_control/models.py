@@ -12,7 +12,10 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CARD_ACTIVE,
     SECURITY_UNKNOWN,
+    TECH_ISO14443A_7B,
+    TECH_MIFARE_CLASSIC,
     TECH_UNKNOWN,
+    TECHNOLOGY_LABELS,
     TECHNOLOGY_SECURITY,
 )
 
@@ -25,19 +28,70 @@ def normalize_uid(raw: str | None) -> str:
     """Porta un UID alla forma canonica del registro.
 
     I lettori scrivono lo stesso UID in modi diversi — maiuscolo o minuscolo,
-    con trattini, con due punti, o attaccato. Confrontare le forme grezze
-    farebbe risultare "non censita" una tessera che è nel registro, e il
-    diniego sarebbe indistinguibile da quello legittimo: un bug del genere si
-    manifesterebbe solo come "a volte non apre".
+    separato da trattini, da due punti, da spazi, o tutto attaccato.
+    Confrontare le forme grezze farebbe risultare "non censita" una tessera
+    che è nel registro, e quel diniego sarebbe indistinguibile da uno
+    legittimo: un bug del genere si manifesta solo come "a volte non apre",
+    che è fra le cose più difficili da diagnosticare su un impianto.
+
+    Perciò non basta uniformare i separatori: vanno **tolti tutti** e poi
+    rimessi a passo fisso, così `04A1B2C3` e `04-a1-b2-c3` finiscono sulla
+    stessa riga del registro.
+
+    Un UID che non è esadecimale (lettore che manda un identificativo suo)
+    viene solo ripulito e messo in maiuscolo, senza raggrupparlo: raggruppare
+    a due a due qualcosa che non sono byte lo renderebbe solo illeggibile.
     """
     if not raw:
         return ""
+
     cleaned = str(raw).strip().upper()
-    for junk in (":", " ", "_"):
-        cleaned = cleaned.replace(junk, "-")
-    while "--" in cleaned:
-        cleaned = cleaned.replace("--", "-")
-    return cleaned.strip("-")
+    for junk in (":", " ", "_", "-"):
+        cleaned = cleaned.replace(junk, "")
+    if not cleaned:
+        return ""
+
+    is_hex = all(c in "0123456789ABCDEF" for c in cleaned)
+    if is_hex and len(cleaned) % 2 == 0:
+        return "-".join(
+            cleaned[i : i + 2] for i in range(0, len(cleaned), 2)
+        )
+    return cleaned
+
+
+def uid_bytes(uid: str) -> int:
+    """Quanti byte ha l'UID."""
+    return len(uid.replace("-", "")) // 2
+
+
+def detect_technology(uid: str) -> str:
+    """Riconosce la famiglia della tessera dal solo UID.
+
+    Chi compra le tessere non sa che chip ci sia dentro, quindi la tecnologia
+    va rilevata e non chiesta. L'unico dato che il PN532 via ESPHome fornisce
+    è l'UID — niente SAK, niente ATQA — ma la sua lunghezza è normata da
+    ISO/IEC 14443-3 e distingue le due famiglie:
+
+    - **4 byte** (single size): MIFARE Classic 1K/4K. UID clonabile.
+    - **7 byte** (double size): Ultralight, NTAG21x, NTAG424, DESFire. Quale
+      dei quattro non è distinguibile senza SAK.
+
+    Che non si distinguano fra loro non è però un problema, perché **oggi
+    contano tutte uguale**: senza verifica del cryptogram, un NTAG424 di cui
+    leggiamo solo l'UID si clona esattamente come una Classic. La distinzione
+    fra 4 e 7 byte serve a dare un'etichetta onesta a chi guarda il registro,
+    non ad assegnare permessi diversi.
+
+    Il livello di sicurezza lo decide `TECHNOLOGY_SECURITY`, e nessuno dei due
+    esiti di questa funzione vale `forte`: ci si arriva solo verificando
+    davvero qualcosa, non riconoscendo un formato.
+    """
+    n = uid_bytes(uid)
+    if n == 4:
+        return TECH_MIFARE_CLASSIC
+    if n in (7, 10):
+        return TECH_ISO14443A_7B
+    return TECH_UNKNOWN
 
 
 @dataclass
@@ -57,8 +111,12 @@ class Card:
 
     @property
     def security(self) -> str:
-        """Livello di sicurezza derivato dalla tecnologia dichiarata."""
+        """Livello di sicurezza derivato dalla tecnologia rilevata."""
         return TECHNOLOGY_SECURITY.get(self.technology, SECURITY_UNKNOWN)
+
+    @property
+    def technology_label(self) -> str:
+        return TECHNOLOGY_LABELS.get(self.technology, self.technology)
 
     @property
     def label(self) -> str:

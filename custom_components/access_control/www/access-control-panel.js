@@ -76,11 +76,28 @@ class AccessControlPanel extends HTMLElement {
     this._render();
     // Il registro e lo stato cambiano per conto loro — una lettura al varco
     // non passa da questa pagina — quindi la pagina si aggiorna da sola.
-    this._timer = setInterval(() => this._carica(), 10000);
+    this._timer = setInterval(() => {
+      if (this._puoRinfrescare()) this._carica();
+    }, 2000);
   }
 
   disconnectedCallback() {
     clearInterval(this._timer);
+  }
+
+  _puoRinfrescare() {
+    // Durante l'enrollment si rinfresca sempre: serve il conto alla rovescia,
+    // e chi sta censendo è al lettore, non con le mani sulla tastiera.
+    if (this._data?.enrollment?.attivo) return true;
+    // Un ridisegno azzera un trascinamento a metà e cancella quello che si
+    // sta scrivendo in un campo: finché una delle due cose è in corso, la
+    // pagina aspetta.
+    if (this._dragging) return false;
+    const a = this.shadowRoot.activeElement;
+    if (a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return false;
+    // Fuori dall'enrollment basta un giro ogni 10 s.
+    this._tick = (this._tick || 0) + 1;
+    return this._tick % 5 === 0;
   }
 
   async _carica() {
@@ -217,81 +234,124 @@ class AccessControlPanel extends HTMLElement {
   // ── tessere ──────────────────────────────────────────────────────────
 
   _vistaTessere(d) {
-    const persone = Object.keys(this._hass?.states || {})
+    const stati = this._hass?.states || {};
+    const persone = Object.keys(stati)
       .filter((e) => e.startsWith("person."))
       .sort();
+    const nome = (p) => stati[p]?.attributes?.friendly_name || p;
+
+    const enr = d.enrollment || {};
+    const boxEnrollment = enr.attivo
+      ? `<div class="attesa">
+           <div class="pulsa"></div>
+           <div>
+             <strong>In attesa della tessera…</strong>
+             <p class="nota">Passa la tessera davanti al lettore.
+               Si chiude fra <b>${enr.secondi}s</b>, o alla prima lettura.</p>
+           </div>
+           <button class="danger" data-act="cancel-enroll">Annulla</button>
+         </div>`
+      : `<div class="riga">
+           <button data-act="start-enroll">Abilita lettura tessera</button>
+           <p class="nota" style="flex:1 1 300px">
+             La tessera viene letta e censita da sola: UID e tipo di chip li
+             ricava il modulo. Nasce <b>senza titolare</b> e finché non gliene
+             assegni uno non apre nulla — trascinala su una persona qui sotto.
+           </p>
+         </div>`;
+
+    // Ogni titolare è un bersaglio del trascinamento, più un riquadro per
+    // staccare l'abbinamento rimettendo la tessera fra quelle senza titolare.
+    const orfane = d.tessere.filter((c) => !c.person).length;
+    const bersagli = [
+      `<div class="persona vuota" data-drop="">
+         <b>Senza titolare</b>
+         <span class="uid">${orfane} tessere · non aprono</span>
+       </div>`,
+      ...persone.map((p) => {
+        const n = d.tessere.filter((c) => c.person === p).length;
+        const ruolo = (d.impostazioni.person_roles || {})[p] || "adulto";
+        return `<div class="persona" data-drop="${esc(p)}">
+                  <b>${esc(nome(p))}</b>
+                  <span class="uid">${esc(ruolo)} · ${n} tessere</span>
+                </div>`;
+      }),
+    ].join("");
+
+    const bottoni = (c) => {
+      const b = [];
+      if (c.state !== "attiva")
+        b.push(`<button class="mini ok" data-set="${esc(c.id)}|attiva">Attiva</button>`);
+      if (c.state !== "disabilitata")
+        b.push(`<button class="mini" data-set="${esc(c.id)}|disabilitata">Disabilita</button>`);
+      if (c.state !== "blacklist")
+        b.push(`<button class="mini warn" data-set="${esc(c.id)}|blacklist">Blacklist</button>`);
+      b.push(`<button class="mini danger" data-remove-card="${esc(c.id)}">Elimina</button>`);
+      return b.join("");
+    };
 
     const righe = d.tessere.length
       ? d.tessere
           .map(
             (c) => `
-        <tr class="stato-${esc(c.state)}">
+        <tr class="stato-${esc(c.state)}" draggable="true" data-card="${esc(c.id)}">
+          <td class="maniglia">⠿</td>
           <td>
-            <b>${esc(c.name || "senza nome")}</b>
+            <b>${esc(c.name)}</b>
             <div class="uid">${esc(c.uid)}</div>
           </td>
-          <td>${esc(c.person || "—")}<div class="uid">${esc(c.ruolo)}</div></td>
+          <td>${c.person ? esc(nome(c.person)) : '<i class="orfana">nessuno</i>'}
+              <div class="uid">${c.person ? esc(c.ruolo) : "non apre"}</div></td>
           <td>
             <span class="pill ${c.sicurezza === "forte" ? "forte" : "debole"}">${esc(c.sicurezza)}</span>
-            <div class="uid">${esc(c.technology)}</div>
+            <div class="uid">${esc(c.tecnologia_label)}</div>
           </td>
           <td><span class="pill s-${esc(c.state)}">${esc(c.state)}</span></td>
           <td>${quando(c.last_used)}<div class="uid">${c.uses} usi</div></td>
-          <td class="azioni">
-            <select data-card-state="${esc(c.id)}">
-              ${d.opzioni.stati_tessera
-                .map(
-                  (s) =>
-                    `<option value="${esc(s)}" ${s === c.state ? "selected" : ""}>${esc(s)}</option>`,
-                )
-                .join("")}
-            </select>
-            <button class="danger" data-remove-card="${esc(c.id)}">Elimina</button>
-          </td>
+          <td class="azioni">${bottoni(c)}</td>
         </tr>`,
           )
           .join("")
-      : `<tr><td colspan="6" class="vuoto">Nessuna tessera censita.</td></tr>`;
+      : `<tr><td colspan="7" class="vuoto">Nessuna tessera censita.</td></tr>`;
 
     return `
       <section class="card">
-        <h2>Censisci una tessera</h2>
-        <p class="nota">Passa la tessera al lettore una volta: la lettura
-          finisce nel registro come sconosciuta e da lì copi l'UID.
-          La tecnologia va dichiarata a mano — il lettore oggi riporta solo
-          l'UID, e da quello non si può dedurre quanto è sicura.</p>
-        <div class="riga">
-          <input id="nuova-uid" placeholder="UID" />
-          <input id="nuova-nome" placeholder="Nome, es. portachiavi scuola" />
-          <select id="nuova-person">
-            <option value="">— titolare —</option>
-            ${persone.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("")}
-          </select>
-          <select id="nuova-tech">
-            ${d.opzioni.tecnologie
-              .map(
-                (t) =>
-                  `<option value="${esc(t)}">${esc(t)} (${esc(d.opzioni.sicurezza_per_tecnologia[t])})</option>`,
-              )
-              .join("")}
-          </select>
-          <button data-act="add-card">Aggiungi</button>
-        </div>
+        <h2>Censimento</h2>
+        ${boxEnrollment}
+      </section>
+
+      <section class="card">
+        <h2>Titolari</h2>
+        <p class="nota">Trascina una tessera dalla tabella su una persona per
+          abbinarla. Il ruolo appartiene alla persona, non alla tessera: due
+          tessere dello stesso titolare non possono avere permessi diversi.</p>
+        <div class="persone">${bersagli}</div>
       </section>
 
       <section class="card">
         <h2>Registro tessere</h2>
         <table>
           <thead><tr>
-            <th>Tessera</th><th>Titolare</th><th>Sicurezza</th>
-            <th>Stato</th><th>Ultimo uso</th><th></th>
+            <th></th><th>Tessera</th><th>Titolare</th><th>Sicurezza</th>
+            <th>Stato</th><th>Ultimo uso</th><th>Azioni</th>
           </tr></thead>
           <tbody>${righe}</tbody>
         </table>
-        <p class="nota"><b>Disabilitata</b> è una sospensione silenziosa, per una
+        <p class="nota"><b>Disabilita</b> è una sospensione silenziosa, per una
           tessera riposta in un cassetto. <b>Blacklist</b> allarma se la tessera
-          ripassa: è quella giusta per una tessera persa. <b>Eliminare</b> la
-          rende di nuovo sconosciuta, e quindi silenziosa.</p>
+          ripassa: è quella giusta per una tessera persa. <b>Elimina</b> la
+          rende di nuovo sconosciuta, e quindi di nuovo silenziosa.</p>
+      </section>
+
+      <section class="card">
+        <h2>Perché nessuna tessera risulta “forte”</h2>
+        <p class="nota">Il livello non descrive il chip: descrive il fatto che
+          il modulo abbia <b>verificato crittograficamente</b> la credenziale.
+          Un NTAG424 di cui si legge solo l'UID si clona esattamente come una
+          MIFARE Classic — la protezione sta nel cryptogram AES, che oggi
+          nessuno verifica. Finché non arriva il componente che lo verifica,
+          <b>forte</b> è irraggiungibile, ed è corretto così: a reggere la
+          sicurezza è la macchina a stati, non la tessera.</p>
       </section>`;
   }
 
@@ -506,25 +566,74 @@ class AccessControlPanel extends HTMLElement {
       }),
     );
 
-    r.querySelector('[data-act="add-card"]')?.addEventListener("click", () =>
-      this._comando({
-        action: "add_card",
-        uid: val("nuova-uid"),
-        name: val("nuova-nome"),
-        person: val("nuova-person"),
-        technology: val("nuova-tech"),
+    r.querySelector('[data-act="start-enroll"]')?.addEventListener("click", () =>
+      this._comando({ action: "start_enrollment" }),
+    );
+
+    r.querySelector('[data-act="cancel-enroll"]')?.addEventListener("click", () =>
+      this._comando({ action: "cancel_enrollment" }),
+    );
+
+    // Stato tessera: un pulsante per azione, non una tendina. Con la tendina
+    // il cambio parte al primo movimento della rotellina sopra il campo, e su
+    // una lista di tessere è un modo silenzioso per mettere in blacklist
+    // quella sbagliata.
+    r.querySelectorAll("[data-set]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const [card_id, state] = el.dataset.set.split("|");
+        if (
+          state === "blacklist" &&
+          !confirm(
+            "Mettere la tessera in blacklist? Se ripassa genererà un allarme " +
+              "ad alta priorità. Per una tessera solo riposta usa Disabilita.",
+          )
+        ) {
+          return;
+        }
+        this._comando({ action: "set_card_state", card_id, state });
       }),
     );
 
-    r.querySelectorAll("[data-card-state]").forEach((el) =>
-      el.addEventListener("change", () =>
+    // ── trascinamento tessera → titolare ──────────────────────────────
+    r.querySelectorAll("[data-card]").forEach((riga) => {
+      riga.addEventListener("dragstart", (ev) => {
+        this._dragging = riga.dataset.card;
+        riga.classList.add("in-volo");
+        ev.dataTransfer.effectAllowed = "move";
+        // Firefox non avvia il trascinamento senza payload impostato.
+        ev.dataTransfer.setData("text/plain", riga.dataset.card);
+      });
+      riga.addEventListener("dragend", () => {
+        this._dragging = null;
+        riga.classList.remove("in-volo");
+        r.querySelectorAll("[data-drop]").forEach((t) =>
+          t.classList.remove("sopra"),
+        );
+      });
+    });
+
+    r.querySelectorAll("[data-drop]").forEach((target) => {
+      target.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "move";
+        target.classList.add("sopra");
+      });
+      target.addEventListener("dragleave", () =>
+        target.classList.remove("sopra"),
+      );
+      target.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        target.classList.remove("sopra");
+        const card_id = this._dragging || ev.dataTransfer.getData("text/plain");
+        this._dragging = null;
+        if (!card_id) return;
         this._comando({
-          action: "set_card_state",
-          card_id: el.dataset.cardState,
-          state: el.value,
-        }),
-      ),
-    );
+          action: "assign_person",
+          card_id,
+          person: target.dataset.drop,
+        });
+      });
+    });
 
     r.querySelectorAll("[data-remove-card]").forEach((el) =>
       el.addEventListener("click", () => {
@@ -644,6 +753,36 @@ class AccessControlPanel extends HTMLElement {
       .varco { border:1px solid var(--divider-color); border-radius:8px; padding:12px; margin-bottom:10px;
                display:flex; flex-direction:column; gap:8px; }
       footer { text-align:center; font-size:.7rem; color:var(--secondary-text-color); padding:12px; }
+
+      /* ── censimento ────────────────────────────────────────────────── */
+      .attesa { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+                border:2px dashed var(--primary-color); border-radius:10px; padding:14px; }
+      .attesa > div:nth-child(2) { flex:1 1 240px; }
+      .attesa .nota { margin:4px 0 0; }
+      .pulsa { width:16px; height:16px; border-radius:50%; background:var(--primary-color);
+               animation:pulsa 1.2s ease-in-out infinite; flex:0 0 auto; }
+      @keyframes pulsa { 0%,100% { opacity:1; transform:scale(1); }
+                         50% { opacity:.35; transform:scale(1.5); } }
+      /* Chi non tollera le animazioni riceve comunque il conto alla rovescia. */
+      @media (prefers-reduced-motion: reduce) { .pulsa { animation:none; } }
+
+      /* ── titolari come bersagli del trascinamento ──────────────────── */
+      .persone { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
+      .persona { border:2px dashed var(--divider-color); border-radius:10px; padding:12px;
+                 display:flex; flex-direction:column; gap:2px; transition:border-color .15s, background .15s; }
+      .persona.vuota { border-style:dotted; opacity:.75; }
+      .persona.sopra { border-color:var(--primary-color); border-style:solid;
+                       background:color-mix(in srgb, var(--primary-color) 12%, transparent); }
+      tr[draggable="true"] { cursor:grab; }
+      tr.in-volo { opacity:.4; }
+      .maniglia { color:var(--secondary-text-color); cursor:grab; user-select:none; width:1.2rem; }
+      .orfana { color:var(--secondary-text-color); }
+      .mini { padding:4px 9px; font-size:.72rem; background:var(--divider-color);
+              color:var(--primary-text-color); }
+      .mini.ok { background:rgba(67,160,71,.25); }
+      .mini.warn { background:rgba(255,167,38,.3); }
+      .mini.danger { background:rgba(219,68,55,.25); color:var(--primary-text-color); }
+      .azioni { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
     `;
   }
 }
