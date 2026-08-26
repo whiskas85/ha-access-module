@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-26
+
 ### Aggiunto
 
 - **Le tessere si censiscono passandole al lettore, non trascrivendo l'UID.**
