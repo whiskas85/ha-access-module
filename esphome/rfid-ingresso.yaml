@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════
-#  NODO rfid-ingresso — lettore esterno del varco pedonale
+#  NODO rfid-ingresso — lettore esterno
 #
 #  RUOLO: legge, non decide, non attua.
 #  Questo dispositivo sta FUORI dal perimetro di sicurezza. Un attaccante che
@@ -7,13 +7,23 @@
 #  codice X" — non di aprire. Nessun GPIO di questo nodo è collegato a un relè
 #  di un varco, e non deve esserlo mai.
 #
-#  Le chiavi crittografiche (future, NTAG424 AES-128) stanno in Home
-#  Assistant, mai qui.
+#  ⚠️ CAMBIO DI CONTRATTO rispetto alla versione precedente.
+#  Questo firmware NON chiama più `homeassistant.tag_scanned`. Vedi in fondo
+#  il perché — è la difesa contro l'inondazione di codici.
 # ═══════════════════════════════════════════════════════════════════════════
 
+substitutions:
+  nome_nodo: rfid-ingresso
+
 esphome:
-  name: rfid-ingresso
+  name: ${nome_nodo}
   friendly_name: RFID Ingresso
+  on_boot:
+    # Priorità bassa: si esegue dopo il ripristino degli interruttori, così il
+    # LED mostra lo stato vero e non quello di un istante prima.
+    priority: -100
+    then:
+      - script.execute: led_pronto
 
 esp32:
   variant: esp32
@@ -21,20 +31,19 @@ esp32:
     type: esp-idf
 
 logger:
-  # ATTENZIONE: non alzare a DEBUG/VERBOSE in esercizio. A quel livello
-  # l'integrazione PN532 stampa i byte letti; quando arriverà l'R503
-  # stamperebbe i byte dei template biometrici, e un template biometrico nei
-  # log è un template biometrico esfiltrato.
+  # ATTENZIONE: non alzare a DEBUG/VERBOSE in esercizio. A quel livello il
+  # PN532 stampa i byte letti; quando arriverà l'R503 stamperebbe i byte dei
+  # template biometrici, e un template biometrico nei log è un template
+  # biometrico esfiltrato.
 
 api:
   encryption:
     key: !secret api_key
+
   actions:
     # ═══════════════════════════════════════════════════════════════════════
-    #  UNICA superficie di comando esposta a Home Assistant.
-    #  HA chiama esphome.rfid_ingresso_esito_accesso con esito "ok" | "ko".
-    #  Il dispositivo emette il pattern acustico corrispondente e basta:
-    #  non apre nulla perché non ha nulla da aprire.
+    #  Risposta del controllo accessi.
+    #  esito: "ok" | "ko" | "allarme"
     # ═══════════════════════════════════════════════════════════════════════
     - action: esito_accesso
       variables:
@@ -45,8 +54,9 @@ api:
         # il pattern "non raggiungibile".
         - script.stop: attesa_ha
         - lambda: |-
-            if (esito == "ok")  id(suono_ok).execute();
-            else                id(suono_ko).execute();
+            if (esito == "ok")           id(suono_ok).execute();
+            else if (esito == "allarme") id(suono_allarme).execute();
+            else                         id(suono_ko).execute();
 
 ota:
   - platform: esphome
@@ -67,8 +77,7 @@ captive_portal:
 #  Bus I²C — PN532 alimentato a 5V, bus a 50 kHz
 #
 #  50 kHz e non i 100 kHz di default: il PN532 su cavo lungo verso l'esterno
-#  perde pacchetti a velocità piena. Il tastierino a matrice via PCF8574
-#  (previsto) andrà su questo stesso bus.
+#  perde pacchetti a velocità piena.
 # ───────────────────────────────────────────────────────────────────────────
 i2c:
   sda: GPIO21
@@ -86,53 +95,172 @@ globals:
     restore_value: no
     initial_value: '0'
 
-# buzzer attivo: si pilota acceso/spento, non con la PWM
+# ───────────────────────────────────────────────────────────────────────────
+#  Buzzer attivo: si pilota acceso/spento, non con la PWM.
+# ───────────────────────────────────────────────────────────────────────────
 switch:
   - platform: gpio
     pin: GPIO18
     id: buzzer
     restore_mode: ALWAYS_OFF
 
+  # ═════════════════════════════════════════════════════════════════════════
+  #  LETTURA ABILITATA
+  #
+  #  È l'interruttore che Home Assistant spegne quando il sistema va in
+  #  allarme. Spegnere la lettura ferma l'inondazione ALLA RADICE: chi cicla
+  #  codici con un Flipper non riesce nemmeno più a far arrivare un evento.
+  #  Rifiutare le letture dopo averle ricevute non basterebbe — il traffico
+  #  arriverebbe comunque.
+  #
+  #  `restore_mode: RESTORE_DEFAULT_ON`: dopo un blackout il lettore riparte
+  #  funzionante. Un lettore che resta muto dopo un calo di tensione è un
+  #  guasto silenzioso, e il caso quotidiano (il bambino che rientra) pesa
+  #  più dello scenario in cui qualcuno stacca la corrente per riabilitare
+  #  un lettore che comunque non aprirebbe niente da solo.
+  # ═════════════════════════════════════════════════════════════════════════
+  - platform: template
+    name: "Lettura abilitata"
+    id: lettura_abilitata
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    icon: mdi:nfc-variant
+    turn_on_action:
+      - script.execute: led_pronto
+    turn_off_action:
+      - script.execute: led_bloccato
+
+# ───────────────────────────────────────────────────────────────────────────
+#  LED di stato — RGB su GPIO25/26/27
+#
+#  Scelti perché sono uscite pulite su ESP32: niente strapping all'avvio,
+#  nessun conflitto con il WiFi. Con LED a catodo comune; per l'anodo comune
+#  invertire con `inverted: true` sui tre output.
+# ───────────────────────────────────────────────────────────────────────────
+output:
+  - platform: ledc
+    pin: GPIO25
+    id: led_r
+  - platform: ledc
+    pin: GPIO26
+    id: led_g
+  - platform: ledc
+    pin: GPIO27
+    id: led_b
+
+light:
+  - platform: rgb
+    name: "LED stato"
+    id: led_stato
+    red: led_r
+    green: led_g
+    blue: led_b
+    restore_mode: ALWAYS_OFF
+
+# ───────────────────────────────────────────────────────────────────────────
+#  TAMPER — predisposto, non ancora cablato
+#
+#  Il microswitch va fra GPIO32 e GND. Finché non c'è, il pull-up interno
+#  tiene l'ingresso alto e il sensore resta a riposo.
+#
+#  Lato Home Assistant serve un'automazione che chiami
+#  `access_control.report_tamper` quando questo passa a `on`. È di proposito
+#  fuori dal firmware: il nodo segnala, non decide.
+# ───────────────────────────────────────────────────────────────────────────
+binary_sensor:
+  - platform: gpio
+    name: "Tamper"
+    id: tamper
+    device_class: tamper
+    pin:
+      number: GPIO32
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 50ms
+
 pn532_i2c:
   update_interval: 500ms
   on_tag:
     then:
-      # rate limiter locale: max 3 letture ogni 10 s.
-      # Serve a evitare che un tag lasciato appoggiato al lettore inondi
-      # l'API. Non è la difesa vera: chi sostituisce il firmware lo rimuove.
-      # Il rate limiter che conta è quello dentro casa, in Home Assistant.
-      - lambda: |-
-          uint32_t w = millis() / 10000;
-          if (w != id(window_id)) { id(window_id) = w; id(scan_count) = 0; }
-          id(scan_count)++;
+      # ═══════════════════════════════════════════════════════════════════
+      #  1. Feedback immediato di lettura.
+      #     25 ms, prima di ogni altra cosa: dice "ti ho letto" mentre la
+      #     decisione è ancora in viaggio. Senza, fra l'avvicinare la
+      #     tessera e la risposta di Home Assistant c'è un silenzio in cui
+      #     non si sa se il lettore abbia visto qualcosa.
+      #     Non rivela nulla: suona identico per ogni tessera.
+      # ═══════════════════════════════════════════════════════════════════
+      - script.execute: blip_lettura
+
+      # 2. Lettura disabilitata (sistema in allarme): non si manda niente.
       - if:
           condition:
-            lambda: 'return id(scan_count) <= 3;'
+            switch.is_off: lettura_abilitata
           then:
-            - script.execute: attesa_ha
-            - homeassistant.tag_scanned: !lambda 'return x;'
+            - logger.log: "Lettura disabilitata: scartata"
+            - script.execute: led_bloccato
           else:
-            - logger.log: "Rate limit attivo"
-            - script.execute: suono_ko
+            # 3. Rate limiter locale: max 3 letture ogni 10 s.
+            #    Evita che una tessera appoggiata al lettore inondi l'API.
+            #    Non è la difesa vera — chi sostituisce il firmware lo
+            #    rimuove — quella sta dentro casa.
+            - lambda: |-
+                uint32_t w = millis() / 10000;
+                if (w != id(window_id)) { id(window_id) = w; id(scan_count) = 0; }
+                id(scan_count)++;
+            - if:
+                condition:
+                  lambda: 'return id(scan_count) <= 3;'
+                then:
+                  - script.execute: attesa_ha
+                  # ═══════════════════════════════════════════════════════
+                  #  4. Evento PROPRIO, non `homeassistant.tag_scanned`.
+                  #     Vedi la nota in fondo: è ciò che tiene pulito il
+                  #     registro tag di Home Assistant.
+                  # ═══════════════════════════════════════════════════════
+                  - homeassistant.event:
+                      event: esphome.access_control_read
+                      data:
+                        lettore: ${nome_nodo}
+                      data_template:
+                        uid: "{{ codice }}"
+                      variables:
+                        codice: |-
+                          return x;
+                else:
+                  - logger.log: "Rate limit attivo"
+                  - script.execute: suono_ko
 
 # ───────────────────────────────────────────────────────────────────────────
-#  PATTERN ACUSTICI
+#  PATTERN ACUSTICI E LUMINOSI
 #
-#  Tre pattern, tre significati — e solo tre. In particolare NON esiste un
-#  pattern "tessera sconosciuta" distinto da "tessera valida fuori orario":
-#  entrambi sono KO identici. Se il buzzer distinguesse i due casi, chi trova
-#  una tessera capirebbe dal feedback che è censita e che vale la pena tornare
-#  a un altro orario.
-#
-#  Nota: il censimento (finestra aperta dal pannello) risponde `ok`. È una
-#  operazione supervisionata, dura al massimo un minuto, e chi sta davanti al
-#  lettore deve sapere che la lettura è arrivata.
+#  Il feedback non rivela MAI il motivo del diniego: tessera sconosciuta,
+#  disabilitata, in blacklist o valida fuori orario suonano tutte `ko`. Se il
+#  buzzer le distinguesse, chi trova una tessera capirebbe che è censita e che
+#  vale la pena tornare a un altro orario.
 # ───────────────────────────────────────────────────────────────────────────
 script:
-  # OK -> due bip corti ravvicinati
+  # Blip di lettura — 25 ms, appena il PN532 vede qualcosa
+  - id: blip_lettura
+    mode: restart
+    then:
+      - switch.turn_on: buzzer
+      - delay: 25ms
+      - switch.turn_off: buzzer
+
+  # OK — due bip corti ravvicinati + LED verde
   - id: suono_ok
     mode: restart
     then:
+      - light.turn_on:
+          id: led_stato
+          red: 0%
+          green: 100%
+          blue: 0%
+          brightness: 100%
       - switch.turn_on: buzzer
       - delay: 60ms
       - switch.turn_off: buzzer
@@ -140,16 +268,39 @@ script:
       - switch.turn_on: buzzer
       - delay: 60ms
       - switch.turn_off: buzzer
+      - delay: 1500ms
+      - script.execute: led_pronto
 
-  # KO -> un bip lungo
+  # KO — un bip lungo + LED rosso breve
   - id: suono_ko
     mode: restart
     then:
+      - light.turn_on:
+          id: led_stato
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 100%
       - switch.turn_on: buzzer
       - delay: 1200ms
       - switch.turn_off: buzzer
+      - delay: 500ms
+      - script.execute: led_pronto
 
-  # HA non risponde -> tre bip corti distanziati
+  # ALLARME — bip alternati, poi rosso fisso finché non si sblocca
+  - id: suono_allarme
+    mode: restart
+    then:
+      - repeat:
+          count: 4
+          then:
+            - switch.turn_on: buzzer
+            - delay: 150ms
+            - switch.turn_off: buzzer
+            - delay: 150ms
+      - script.execute: led_bloccato
+
+  # HA non risponde — tre bip corti distanziati
   - id: attesa_ha
     mode: restart
     then:
@@ -162,67 +313,89 @@ script:
             - switch.turn_off: buzzer
             - delay: 400ms
 
+  # LED a riposo: verde molto tenue = "sono qui e leggo"
+  - id: led_pronto
+    mode: restart
+    then:
+      - if:
+          condition:
+            switch.is_on: lettura_abilitata
+          then:
+            - light.turn_on:
+                id: led_stato
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 8%
+          else:
+            - script.execute: led_bloccato
+
+  # LED bloccato: rosso fisso, il segnale che il lettore non legge più
+  - id: led_bloccato
+    mode: restart
+    then:
+      - light.turn_on:
+          id: led_stato
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 60%
+
 button:
   - platform: template
-    name: "Buzzer test OK"
+    name: "Test suono OK"
     on_press:
       - script.execute: suono_ok
-
   - platform: template
-    name: "Buzzer test KO"
+    name: "Test suono KO"
     on_press:
       - script.execute: suono_ko
-
   - platform: template
-    name: "Buzzer test attesa"
+    name: "Test suono attesa"
     on_press:
       - script.execute: attesa_ha
+  - platform: template
+    name: "Test suono allarme"
+    on_press:
+      - script.execute: suono_allarme
+
+# All'avvio il LED dice subito in che stato è il lettore. Si aspetta un
+# attimo: `restore_mode` deve aver già ripristinato l'interruttore di lettura,
+# altrimenti il LED mostrerebbe uno stato che fra un istante non è più vero.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  DUE COSE CHE QUESTO FIRMWARE NON FA, E PERCHÉ
-# ═══════════════════════════════════════════════════════════════════════════
+#  PERCHÉ NON SI USA PIÙ `homeassistant.tag_scanned`
 #
-#  ── 1. Non riporta SAK/ATQA, quindi non classifica il chip ────────────────
+#  `tag_scanned` fa creare a Home Assistant un'entità `tag.*` per OGNI UID mai
+#  visto. Chi arriva con un Flipper e cicla centomila codici crea centomila
+#  entità: il registro tag diventa inservibile, il database si gonfia, e il
+#  danno resta anche dopo che l'attaccante se n'è andato.
 #
-#  `pn532_i2c` espone solo l'UID. Il tipo di chip si legge dai byte SAK/ATQA
-#  della fase di anticollisione (SAK 0x08 = MIFARE Classic 1K, 0x20 =
-#  ISO14443-4 quindi DESFire/NTAG424), che il componente standard non passa
-#  alle automazioni.
+#  Questo firmware manda invece `esphome.access_control_read`, che è un evento
+#  e basta: non crea niente. È il modulo, DOPO aver validato la tessera, a
+#  farla comparire nel registro tag. Un UID sconosciuto resta un numero in un
+#  contatore.
 #
-#  Nel frattempo Home Assistant classifica dalla LUNGHEZZA dell'UID, che è
-#  normata da ISO/IEC 14443-3: 4 byte = MIFARE Classic, 7 byte = famiglia
-#  Ultralight/NTAG/DESFire. Non distingue NTAG213 da NTAG424 — ma oggi non
-#  serve, perché senza verifica del cryptogram contano uguale: un NTAG424 di
-#  cui si legge solo l'UID si clona come una Classic.
+#  Se il modulo non è installato, questo nodo non fa niente di visibile: è il
+#  compromesso di questa scelta, ed è quello giusto.
 #
-#  Un custom component che riporti SAK/ATQA serve nel momento in cui esisterà
-#  la verifica crittografica (§12), non prima: è quella a rendere una tessera
-#  "forte", non il riconoscimento del formato.
 #
-#  ── 2. Non ha il fallback locale di §10 ───────────────────────────────────
+#  IL FALLBACK LOCALE NON C'È, E NON È UNA DIMENTICANZA
 #
-#  La spec §10 chiede che, se HA non risponde entro il timeout e siamo dentro
-#  la finestra scuola, l'ESP apra da solo il cancelletto.
-#  La spec §2, sotto l'intestazione "non negoziabile", dice testualmente:
-#      "L'ESP32 esterno non deve mai pilotare un relè collegato a un varco.
-#       Nessuna eccezione, nemmeno 'per comodità' o 'solo come fallback'."
+#  La spec §10 chiede che, se HA non risponde e siamo dentro la finestra,
+#  l'ESP apra da solo il cancelletto. La §2, sotto l'intestazione "non
+#  negoziabile", dice: "L'ESP32 esterno non deve mai pilotare un relè
+#  collegato a un varco. Nessuna eccezione, nemmeno 'per comodità' o 'solo
+#  come fallback'."
 #
-#  Le due si contraddicono e qui vince §2, che anticipa alla lettera proprio
-#  questa richiesta. Implementarlo significherebbe:
-#    - portare un relè di varco sul dispositivo esterno, cioè spostare
-#      l'attuazione fuori dal perimetro di sicurezza;
-#    - tenere una credenziale valida nella flash di un dispositivo
-#      fisicamente raggiungibile dalla strada;
-#    - rendere l'apertura ottenibile impedendo a HA di rispondere — cioè chi
-#      disturba la rete apre il cancello.
+#  Vince §2, che anticipa alla lettera proprio questa richiesta. Il motivo
+#  determinante: un fallback del genere rende l'apertura ottenibile
+#  impedendo a HA di rispondere — cioè chi disturba la rete apre il cancello.
+#  Trasformerebbe un guasto di rete in una primitiva di apertura, e la rete è
+#  la cosa più facile da disturbare dall'esterno.
 #
-#  L'ultimo punto è il più serio: trasforma un guasto di rete in una
-#  primitiva di apertura, e la rete è la cosa più facile da disturbare
-#  dall'esterno.
-#
-#  L'alternativa che copre lo stesso caso quotidiano senza spostare
-#  l'attuazione è il fallback manuale già previsto dalla stessa §10: key safe
-#  con combinazione, o PIN nativo della serratura. Nessuno dei due dipende da
-#  rete, da HA o dall'alimentazione del lettore.
+#  L'alternativa che copre lo stesso caso senza spostare l'attuazione fuori
+#  casa è il fallback manuale già previsto dalla stessa §10: key safe con
+#  combinazione, o PIN nativo della serratura.
 # ═══════════════════════════════════════════════════════════════════════════

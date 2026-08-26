@@ -1,6 +1,8 @@
-"""Macchina a stati di Controllo Accessi.
+"""Macchina di AUTORIZZAZIONE: chi può entrare adesso.
 
-Unica proprietaria di `store.system_state`. Nessun altro modulo lo scrive.
+Non decide se c'è un allarme in corso — quella è l'altra macchina, che sta nel
+motore di valutazione. Qui si risponde solo a "in questo momento, quali ruoli
+sono ammessi e su quali lettori".
 """
 
 from __future__ import annotations
@@ -17,18 +19,18 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    STATE_ADULT_RETURN,
-    STATE_OCCUPIED,
-    STATE_SCHOOL,
-    STATE_SLEEP,
+    ROLE_ADULT,
+    ROLE_CHILD,
+    STATE_CLOSED,
+    STATE_OPEN,
 )
 from .store import AccessStore
 
 _LOGGER = logging.getLogger(__name__)
 
 # La rete di sicurezza: se un listener di stato si perde, entro un minuto la
-# macchina si riallinea comunque. La finestra scuola ha risoluzione al minuto,
-# quindi più fitto di così non servirebbe a niente.
+# macchina si riallinea comunque. Le finestre hanno risoluzione al minuto,
+# quindi più fitto non servirebbe a niente.
 TICK = timedelta(minutes=1)
 
 DOOR_CLOSED = "chiusa"
@@ -50,20 +52,16 @@ def _parse_hhmm(raw: str, fallback: time) -> time:
 
 
 class AccessCoordinator:
-    """Calcola lo stato del sistema e lo tiene aggiornato."""
+    """Calcola chi è ammesso adesso, e lo tiene aggiornato."""
 
     def __init__(self, hass: HomeAssistant, store: AccessStore) -> None:
         self.hass = hass
         self.store = store
-        # Momento in cui l'ultima persona è stata vista in casa. È ciò che
-        # implementa il ritardo di ritorno a sleep: la casa non è "vuota"
-        # nell'istante in cui l'ultimo se ne va.
         self._last_presence: Any = None
 
     # ── ciclo di vita ──────────────────────────────────────────────────────
 
     def async_start(self) -> CALLBACK_TYPE:
-        """Avvia gli osservatori. Ritorna la funzione per fermarli."""
         unsubs: list[CALLBACK_TYPE] = []
 
         @callback
@@ -81,7 +79,6 @@ class AccessCoordinator:
             self.async_refresh()
 
         unsubs.append(async_track_time_interval(self.hass, _on_tick, TICK))
-
         self.async_refresh()
 
         @callback
@@ -95,8 +92,7 @@ class AccessCoordinator:
         settings = self.store.settings
         entities = list(settings.get("person_entities") or [])
         for key in ("door_lock_entity", "door_contact_entity"):
-            entity_id = settings.get(key)
-            if entity_id:
+            if entity_id := settings.get(key):
                 entities.append(entity_id)
         return entities
 
@@ -107,15 +103,14 @@ class AccessCoordinator:
         return bool(self.store.settings.get("master", True))
 
     def anyone_home(self) -> bool:
-        persons = self.store.settings.get("person_entities") or []
         return any(
             (state := self.hass.states.get(entity)) is not None
             and state.state == "home"
-            for entity in persons
+            for entity in (self.store.settings.get("person_entities") or [])
         )
 
     def presence_recent(self) -> bool:
-        """Presenza, con il ritardo di ritorno a sleep già applicato."""
+        """Presenza, con il ritardo di ritorno a chiuso già applicato."""
         if self.anyone_home():
             self._last_presence = dt_util.utcnow()
             return True
@@ -143,24 +138,73 @@ class AccessCoordinator:
             state = self.hass.states.get(entity)
             if state is None or state.state == "home":
                 continue
-            if self.store.role_of(entity) != "adulto":
+            if self.store.role_of(entity) != ROLE_ADULT:
                 continue
             if state.state == zone_name:
                 return True
         return False
 
-    def school_window_active(self) -> bool:
-        settings = self.store.settings
-        now = dt_util.now()
-        if now.weekday() not in (settings.get("school_days") or []):
+    # ── finestre ───────────────────────────────────────────────────────────
+
+    def window_active(self, window: dict[str, Any]) -> bool:
+        if not window.get("enabled", True):
             return False
-        start = _parse_hhmm(settings.get("school_start"), time(15, 30))
-        end = _parse_hhmm(settings.get("school_end"), time(16, 30))
+        now = dt_util.now()
+        if now.weekday() not in (window.get("days") or []):
+            return False
+        start = _parse_hhmm(window.get("start"), time(0, 0))
+        end = _parse_hhmm(window.get("end"), time(23, 59))
         current = now.time()
         if start <= end:
             return start <= current <= end
         # Finestra che scavalca la mezzanotte.
         return current >= start or current <= end
+
+    def active_windows(self) -> list[dict[str, Any]]:
+        if not self.master_on:
+            return []
+        return [w for w in self.store.windows.values() if self.window_active(w)]
+
+    def allows(self, role: str, device_id: str) -> tuple[bool, str]:
+        """Questo ruolo può entrare adesso da questo lettore?
+
+        Ritorna (ammesso, nome della finestra o della regola che lo ammette).
+        Le opzioni di presenza si SOMMANO alle finestre: sono scorciatoie per
+        i casi che valgono sempre, non regole che le scavalcano.
+        """
+        if not self.master_on or not role:
+            return False, ""
+
+        for window in self.active_windows():
+            if role not in (window.get("roles") or []):
+                continue
+            consentiti = window.get("devices") or []
+            if consentiti and device_id not in consentiti:
+                continue
+            return True, window.get("name") or window.get("id", "")
+
+        settings = self.store.settings
+        if settings.get("presence_opens_all") and self.presence_recent():
+            return True, "casa occupata"
+        if (
+            settings.get("nearby_opens_adults")
+            and role == ROLE_ADULT
+            and self.adult_nearby()
+        ):
+            return True, "adulto in avvicinamento"
+
+        return False, ""
+
+    def open_roles(self) -> list[str]:
+        """Quali ruoli sono ammessi adesso, da almeno un lettore."""
+        ruoli = []
+        for role in (ROLE_CHILD, ROLE_ADULT):
+            ammesso, _ = self.allows(role, "")
+            if ammesso:
+                ruoli.append(role)
+        return ruoli
+
+    # ── porta ──────────────────────────────────────────────────────────────
 
     def door_status(self) -> str:
         """Incrocia due fonti indipendenti: serratura e contatto sull'anta.
@@ -168,8 +212,7 @@ class AccessCoordinator:
         Anta chiusa con serratura sbloccata NON è incoerente: è la porta
         accostata ma non mandata in sicurezza, cioè la condizione normale di
         casa abitata. Incoerente è solo l'anta aperta mentre la serratura
-        dichiara chiusa a chiave — fisicamente impossibile, quindi guasto o
-        forzamento.
+        dichiara chiusa a chiave — fisicamente impossibile.
         """
         settings = self.store.settings
         lock_id = settings.get("door_lock_entity")
@@ -183,7 +226,6 @@ class AccessCoordinator:
             return DOOR_UNKNOWN
         if lock.state in _UNAVAILABLE or contact.state in _UNAVAILABLE:
             return DOOR_UNKNOWN
-
         if lock.state == "jammed":
             return DOOR_FAULT
         if lock.state in ("opening", "unlocking", "locking"):
@@ -194,29 +236,27 @@ class AccessCoordinator:
             return DOOR_INCONSISTENT
         return DOOR_OPEN if anta_aperta else DOOR_CLOSED
 
-    # ── calcolo dello stato ────────────────────────────────────────────────
+    # ── stato complessivo ──────────────────────────────────────────────────
 
     def compute_state(self) -> tuple[str, str]:
-        """Ritorna (stato, motivo leggibile). Priorità decrescente."""
+        """Ritorna (stato, motivo leggibile)."""
         if not self.master_on:
-            return STATE_SLEEP, "Master accessi spento"
+            return STATE_CLOSED, "Master accessi spento"
 
-        if self.presence_recent():
-            return STATE_OCCUPIED, "Casa occupata: presenza rilevata"
+        ruoli = self.open_roles()
+        if not ruoli:
+            return STATE_CLOSED, "Nessuna finestra attiva in questo momento"
 
-        if self.adult_nearby():
-            return STATE_ADULT_RETURN, "Rientro adulto: qualcuno in avvicinamento"
-
-        if self.school_window_active():
-            end = self.store.settings.get("school_end", "")
-            return STATE_SCHOOL, f"Finestra scuola attiva fino alle {end}"
-
-        return STATE_SLEEP, "Sleep: fuori finestra scuola, nessuno in avvicinamento"
+        finestre = [w.get("name") or w["id"] for w in self.active_windows()]
+        if finestre:
+            elenco = ", ".join(finestre)
+            ammessi = ", ".join(ruoli)
+            return STATE_OPEN, f"Finestra attiva: {elenco} — ammessi: {ammessi}"
+        return STATE_OPEN, f"Ammessi: {', '.join(ruoli)} (presenza in casa)"
 
     @property
-    def is_armed(self) -> bool:
-        """Il sistema accetterebbe una credenziale in questo momento."""
-        return self.master_on and self.store.system_state != STATE_SLEEP
+    def is_open(self) -> bool:
+        return self.store.system_state == STATE_OPEN
 
     @callback
     def async_refresh(self) -> None:
@@ -225,11 +265,9 @@ class AccessCoordinator:
         self.store.system_state = state
         self.store.state_reason = reason
         if previous and previous != state:
-            _LOGGER.debug("Stato accessi %s -> %s (%s)", previous, state, reason)
+            _LOGGER.debug("Autorizzazione %s -> %s (%s)", previous, state, reason)
 
         # Si notifica a ogni giro, non solo quando lo stato cambia: alcune
         # entità dipendono dallo scorrere del tempo e non da una transizione —
-        # "porta socchiusa" diventa vero perché sono passati cinque minuti,
-        # non perché è cambiato qualcosa. Notificando solo sui cambi di stato
-        # resterebbero ferme finché non si muove qualcos'altro.
+        # "porta socchiusa" diventa vero perché sono passati cinque minuti.
         self.store.notify()

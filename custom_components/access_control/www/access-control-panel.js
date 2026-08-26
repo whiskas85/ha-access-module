@@ -9,8 +9,16 @@ const TABS = [
   { id: "stato", label: "Stato" },
   { id: "tessere", label: "Tessere" },
   { id: "dispositivi", label: "Dispositivi" },
+  { id: "varchi", label: "Varchi" },
+  { id: "finestre", label: "Finestre" },
   { id: "registro", label: "Registro" },
+  { id: "notifiche", label: "Notifiche" },
   { id: "impostazioni", label: "Impostazioni" },
+];
+
+const GIORNI_LUNGHI = [
+  "Lunedì", "Martedì", "Mercoledì", "Giovedì",
+  "Venerdì", "Sabato", "Domenica",
 ];
 
 const GIORNI = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
@@ -19,17 +27,15 @@ const ESITO_ETICHETTA = {
   granted: "consentito",
   denied: "negato",
   blacklist: "BLACKLIST",
-  lockout: "lockout",
+  alarm: "ALLARME",
   // Un censimento non è un tentativo di accesso: al lettore risponde `ok` e
   // non entra nel conteggio dei rifiuti.
   enrolled: "censita",
 };
 
 const STATO_ETICHETTA = {
-  sleep: "Sleep",
-  finestra_scuola: "Finestra scuola",
-  rientro_adulto: "Rientro adulto",
-  casa_occupata: "Casa occupata",
+  chiuso: "Chiuso",
+  aperto: "Aperto",
 };
 
 // Icone Material Design Icons, inline: il pannello vive in uno shadow root e
@@ -70,6 +76,14 @@ const ICONE = {
     "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z",
   ricarica:
     "M17.65 6.35A8 8 0 0 0 12 4a8 8 0 0 0-8 8 8 8 0 0 0 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18a6 6 0 0 1-6-6 6 6 0 0 1 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z",
+  varco:
+    "M12 3 2 8v13h6v-6h8v6h6V8zM4 19V9.2l8-4 8 4V19h-2v-6H6v6z",
+  orologio:
+    "M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16m.5 3v5.25l4.5 2.67-.75 1.23L11 13V7z",
+  campana:
+    "M21 19v1H3v-1l2-2v-6a7 7 0 0 1 5-6.71V4a2 2 0 1 1 4 0v.29A7 7 0 0 1 19 11v6zM10 21h4a2 2 0 0 1-4 0",
+  scudo:
+    "M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5zm0 2.18 7 3.11V11c0 4.52-2.98 8.69-7 9.93-4.02-1.24-7-5.41-7-9.93V6.29z",
   togliRuolo:
     "M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c1.2 0 2.34.13 3.36.37l-1.7 1.7c-.54-.05-1.1-.07-1.66-.07-3.09 0-6 1.29-6 2v1h5.43l-2 2H4v-2c0-2.66 5.33-4 8-4M22.11 21.46 20.7 22.87 18.5 20.68l-2.2 2.19-1.41-1.41 2.19-2.2-2.19-2.2 1.41-1.41 2.2 2.19 2.2-2.19 1.41 1.41-2.19 2.2z",
 };
@@ -107,6 +121,36 @@ const quando = (iso) => {
     minute: "2-digit",
   });
 };
+
+// I controlli del frontend di Home Assistant non sono caricati finché
+// qualcuno non li usa. `loadCardHelpers` costruisce una card, e costruire una
+// card tira dentro `ha-selector` con tutta la sua famiglia — compreso il
+// selettore `action`, che è l'editor di azioni delle automazioni.
+//
+// Sono API private: possono cambiare senza preavviso fra versioni di HA.
+// Perciò il caricamento è dietro try/catch e chi lo usa ha un ripiego: senza,
+// un aggiornamento di Home Assistant lascerebbe una pagina bianca al posto
+// dell'editor, e non si capirebbe perché.
+let _componentiHA = null;
+
+async function caricaComponentiHA() {
+  if (_componentiHA !== null) return _componentiHA;
+  try {
+    if (!customElements.get("ha-selector")) {
+      const helpers = await window.loadCardHelpers();
+      const card = await helpers.createCardElement({ type: "entities", entities: [] });
+      if (card.constructor.getConfigElement) {
+        await card.constructor.getConfigElement();
+      }
+      await customElements.whenDefined("ha-selector");
+    }
+    _componentiHA = !!customElements.get("ha-selector");
+  } catch (err) {
+    console.warn("Controlli di Home Assistant non disponibili", err);
+    _componentiHA = false;
+  }
+  return _componentiHA;
+}
 
 class AccessControlPanel extends HTMLElement {
   constructor() {
@@ -147,6 +191,9 @@ class AccessControlPanel extends HTMLElement {
     // sta scrivendo in un campo: finché una delle due cose è in corso, la
     // pagina aspetta.
     if (this._dragging) return false;
+    // Con l'editor delle azioni aperto non si ridisegna: un ridisegno
+    // ricostruirebbe il componente e perderebbe la sequenza in modifica.
+    if (this._configDisp) return false;
     const a = this.shadowRoot.activeElement;
     if (a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return false;
     // Fuori dall'enrollment basta un giro ogni 10 s.
@@ -214,6 +261,7 @@ class AccessControlPanel extends HTMLElement {
       }),
     );
     this._agganciaAzioni();
+    this._montaEditorAzioni();
   }
 
   // ── disallineamento di versione ──────────────────────────────────────
@@ -289,6 +337,9 @@ class AccessControlPanel extends HTMLElement {
     if (this._tab === "stato") return this._vistaStato(d);
     if (this._tab === "tessere") return this._vistaTessere(d);
     if (this._tab === "dispositivi") return this._vistaDispositivi(d);
+    if (this._tab === "varchi") return this._vistaVarchi(d);
+    if (this._tab === "finestre") return this._vistaFinestre(d);
+    if (this._tab === "notifiche") return this._vistaNotifiche(d);
     if (this._tab === "registro") return this._vistaRegistro(d);
     return this._vistaImpostazioni(d);
   }
@@ -296,60 +347,103 @@ class AccessControlPanel extends HTMLElement {
   // ── stato ────────────────────────────────────────────────────────────
 
   _vistaStato(d) {
-    const s = d.stato;
-    const badge = s.armato
-      ? `<span class="big ok">🔓 Sistema armato</span>`
-      : `<span class="big off">🔒 Sistema in sleep</span>`;
-
+    const st = d.stato;
+    const sic = d.sicurezza || {};
     const ultimo = d.log.find((r) => r.esito === "granted");
 
+    // L'allarme viene per primo e occupa spazio: quando c'è, è l'unica cosa
+    // che conta, e leggere lo stato delle finestre mentre l'impianto è fermo
+    // manderebbe a cercare il problema dalla parte sbagliata.
+    const allarme = sic.in_allarme
+      ? `<section class="card allarme">
+           <div class="titolare">
+             ${icona("scudo", "ico-grande")}
+             <div class="chi">
+               <b>Sistema in allarme</b>
+               <span class="sotto">${esc(sic.motivo || "")} · dalle ${quando(sic.dal)}</span>
+             </div>
+           </div>
+           <p class="nota">I lettori sono <b>spenti</b>: non leggono, quindi
+             nessuna lettura arriva più. Si riparte solo di qui — o dal
+             pulsante nella notifica, che apre un varco senza sbloccare
+             l'impianto.</p>
+           <button data-act="sblocca">${icona("ricarica")} Sblocca e riaccendi i lettori</button>
+         </section>`
+      : "";
+
+    const ruoli = st.ruoli_ammessi || [];
+    const finestre = st.finestre_attive || [];
+
     return `
+      ${allarme}
+
       <section class="card">
-        ${badge}
-        <p class="motivo">${esc(s.motivo || "—")}</p>
+        <div class="due-stati">
+          <div class="stato-box ${st.armato ? "ok" : "off"}">
+            <span class="etichetta">Autorizzazione</span>
+            <b>${st.sistema === "aperto" ? "Aperto" : "Chiuso"}</b>
+            <span class="sotto">${
+              ruoli.length ? `ammessi: ${ruoli.map(esc).join(", ")}` : "non entra nessuno"
+            }</span>
+          </div>
+          <div class="stato-box ${sic.in_allarme ? "male" : "ok"}">
+            <span class="etichetta">Sicurezza</span>
+            <b>${sic.in_allarme ? "Allarme" : "Normale"}</b>
+            <span class="sotto">${
+              sic.in_allarme
+                ? esc(sic.motivo || "")
+                : `${sic.fallimenti || 0} errori di fila su ${sic.soglia || 3}`
+            }</span>
+          </div>
+        </div>
+        <p class="motivo">${esc(st.motivo || "—")}</p>
         <div class="griglia">
-          ${this._kv("Stato", STATO_ETICHETTA[s.sistema] || s.sistema)}
-          ${this._kv("Porta", s.porta)}
+          ${this._kv("Finestre attive", finestre.length ? finestre.join(", ") : "nessuna")}
+          ${this._kv("Porta", st.porta)}
           ${this._kv("Ultimo accesso", ultimo ? `${quando(ultimo.timestamp)} — ${esc(ultimo.card_nome)}` : "mai")}
-          ${this._kv("Negati oggi", s.negati_oggi)}
+          ${this._kv("Negati oggi", st.negati_oggi)}
           ${this._kv("Tessere censite", d.tessere.length)}
-          ${this._kv("Fallimenti consecutivi", s.fallimenti)}
+          ${this._kv("Lettori registrati", (d.dispositivi || []).length)}
         </div>
       </section>
 
-      ${
-        s.lockout
-          ? `<section class="card allarme">
-               <strong>🚨 Lettori in allarme</strong>
-               <p>Modalità <b>${esc(d.impostazioni.lockout_mode)}</b>, fino alle ${quando(s.bloccati_fino_a)}.
-               ${
-                 d.impostazioni.lockout_mode === "segnala"
-                   ? "Le credenziali valide continuano a funzionare."
-                   : "<b>Ogni lettura è rifiutata, comprese quelle valide.</b>"
-               }</p>
-               <button data-act="unlock">Sblocca i lettori</button>
-             </section>`
-          : ""
-      }
+      <section class="card">
+        <h2>Come funziona</h2>
+        <ul class="spiega">
+          <li>${icona("orologio")}<span><b>Autorizzazione</b> — le finestre
+            dicono chi può entrare e quando. Fuori da ogni finestra non entra
+            nessuno: una configurazione vuota è una casa chiusa.</span></li>
+          <li>${icona("scudo")}<span><b>Sicurezza</b> — dopo
+            <b>${sic.soglia || 3}</b> letture rifiutate di fila, o se passa una
+            tessera disabilitata o in blacklist, o se un lettore viene
+            manomesso, il sistema va in <b>allarme</b>: i lettori si spengono e
+            si riparte solo a mano.</span></li>
+          <li>${icona("check")}<span>Si apre solo quando <b>entrambe</b>
+            dicono sì. Poi è il <b>lettore</b> a decidere cosa fare: il tag
+            valida l'accesso, il dispositivo esegue le sue azioni.</span></li>
+        </ul>
+      </section>
 
       <section class="card">
         <h2>Perché il sistema fa così</h2>
         <div class="griglia">
-          ${this._kv("Master", s.master ? "acceso" : "spento")}
-          ${this._kv("Finestra scuola attiva", s.finestra_scuola ? "sì" : "no")}
-          ${this._kv("Presenza recente", s.presenza ? "sì" : "no")}
-          ${this._kv("Adulto in avvicinamento", s.adulto_vicino ? "sì" : "no")}
+          ${this._kv("Master", st.master ? "acceso" : "spento")}
+          ${this._kv("Presenza recente", st.presenza ? "sì" : "no")}
+          ${this._kv("Adulto in avvicinamento", st.adulto_vicino ? "sì" : "no")}
+          ${this._kv("Errori consecutivi", sic.fallimenti || 0)}
         </div>
       </section>
 
       <section class="card">
         <h2>Prova una lettura</h2>
-        <p class="nota">Percorre tutta la catena — decisione, hook, script,
-          registro — senza andare al varco.</p>
+        <p class="nota">Percorre tutta la catena — decisione, azioni del
+          lettore, registro — senza andare al varco.</p>
         <div class="riga">
           <input id="prova-uid" placeholder="UID" />
           <select id="prova-varco">
-            ${d.varchi.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join("")}
+            ${(d.dispositivi || [])
+              .map((l) => `<option value="${esc(l.device_id)}">${esc(l.nome)}</option>`)
+              .join("")}
           </select>
           <button data-act="scan">Valuta</button>
         </div>
@@ -699,6 +793,8 @@ class AccessControlPanel extends HTMLElement {
               : '<span class="pill s-attiva">presente</span>'
           }</td>
           <td data-etichetta="Azioni"><div class="azioni">
+            <button class="mini" data-config-disp="${esc(x.device_id)}">
+              ${icona("varco")}<span>Configura</span></button>
             <button class="mini danger" data-togli-disp="${esc(x.device_id)}">
               ${icona("delete")}<span>Rimuovi</span></button>
           </div></td>
@@ -757,6 +853,8 @@ class AccessControlPanel extends HTMLElement {
         <div class="candidati">${elenco}</div>
       </section>
 
+      ${this._configLettore(d)}
+
       <section class="card">
         <h2>Lettori registrati</h2>
         <div class="tabella">
@@ -772,6 +870,422 @@ class AccessControlPanel extends HTMLElement {
           usavano restano senza lettore — e il pannello lo dice, invece di
           lasciarli in silenzio a non ricevere mai letture.</p>
       </section>`;
+  }
+
+  _configLettore(d) {
+    const id = this._configDisp;
+    if (!id) return "";
+    const l = (d.dispositivi || []).find((x) => x.device_id === id);
+    if (!l) return "";
+
+    const varchi = d.varchi || [];
+
+    return `
+      <section class="card gruppo" data-config="${esc(id)}">
+        <div class="titolare">
+          ${icona("lettore", "ico-grande")}
+          <div class="chi">
+            <b>${esc(l.nome)}</b>
+            <span class="sotto">azioni, risposta acustica e interruttore di lettura</span>
+          </div>
+          <button class="mini" data-chiudi-config="1">${icona("close")}<span>Chiudi</span></button>
+        </div>
+
+        <h2>Cosa fa quando una tessera è valida</h2>
+        <p class="nota">Il tag valida l'accesso, <b>il lettore decide
+          l'azione</b>. È lo stesso editor delle automazioni: puoi aprire un
+          varco, chiamare uno script, accendere una luce, mettere condizioni.
+          Nelle azioni hai la variabile <code>accesso</code>, quindi
+          <code>{{ accesso.person }}</code> e
+          <code>{{ accesso.card_nome }}</code> funzionano.</p>
+        ${
+          varchi.length
+            ? `<div class="riga">
+                 <span class="nota" style="margin:0">Scorciatoie:</span>
+                 ${varchi
+                   .map(
+                     (g) =>
+                       `<button class="mini" data-aggiungi-apertura="${esc(id)}|${esc(g.id)}">
+                          ${icona("varco")}<span>Apri ${esc(g.name)}</span></button>`,
+                   )
+                   .join("")}
+               </div>`
+            : `<p class="nota">${icona("alert")} Nessun varco definito: creane
+                 uno nella scheda <b>Varchi</b> per poterlo aprire da qui.</p>`
+        }
+        <div class="editor-azioni" data-editor-azioni="${esc(id)}"></div>
+
+        <h2>Risposta al lettore</h2>
+        <p class="nota">Va data sempre, anche negando: se il modulo tace, il
+          dispositivo emette il pattern «non raggiungibile» e chi è alla porta
+          crede che il sistema sia guasto quando era solo fuori orario.</p>
+        <div class="riga">
+          <label>Servizio di risposta
+            <input data-c="reader_service" value="${esc(l.reader_service || "")}"
+                   placeholder="esphome.rfid_ingresso_esito_accesso" /></label>
+          <label>Interruttore di lettura
+            <input data-c="enable_switch" value="${esc(l.enable_switch || "")}"
+                   placeholder="switch.rfid_ingresso_lettura_abilitata" /></label>
+        </div>
+        <p class="nota">L'interruttore è quello che il sistema spegne quando va
+          in allarme: senza, in allarme il lettore continuerebbe a leggere e a
+          inondare l'API — che è esattamente ciò da cui l'allarme difende.</p>
+
+        <button class="primario" data-salva-config="${esc(id)}">
+          ${icona("check")} Salva configurazione del lettore</button>
+      </section>`;
+  }
+
+  // ── editor azioni ────────────────────────────────────────────────────
+
+  async _montaEditorAzioni() {
+    const contenitori = this.shadowRoot.querySelectorAll("[data-editor-azioni]");
+    if (!contenitori.length) return;
+
+    const disponibili = await caricaComponentiHA();
+
+    contenitori.forEach((box) => {
+      const deviceId = box.dataset.editorAzioni;
+      const device = (this._data?.dispositivi || []).find(
+        (x) => x.device_id === deviceId,
+      );
+      const azioni = device?.azioni || [];
+      box.innerHTML = "";
+
+      if (!disponibili) {
+        // Ripiego: si modifica il JSON a mano. Brutto, ma è pur sempre
+        // modificabile — meglio di un riquadro vuoto senza spiegazione.
+        const nota = document.createElement("p");
+        nota.className = "nota";
+        nota.textContent =
+          "I controlli grafici di Home Assistant non si sono caricati. " +
+          "Puoi comunque scrivere le azioni in JSON qui sotto.";
+        const area = document.createElement("textarea");
+        area.className = "json-azioni";
+        area.rows = 8;
+        area.value = JSON.stringify(azioni, null, 2);
+        area.dataset.jsonAzioni = deviceId;
+        box.append(nota, area);
+        return;
+      }
+
+      const sel = document.createElement("ha-selector");
+      sel.hass = this._hass;
+      // `action` è il selettore che rende l'editor di azioni completo:
+      // sequenze, chiamate a servizio, script, condizioni, attese.
+      sel.selector = { action: {} };
+      sel.value = azioni;
+      sel.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        this._azioniInModifica = this._azioniInModifica || {};
+        this._azioniInModifica[deviceId] = ev.detail.value;
+      });
+      box.appendChild(sel);
+    });
+  }
+
+  _azioniCorrenti(deviceId) {
+    if (this._azioniInModifica && deviceId in this._azioniInModifica) {
+      return this._azioniInModifica[deviceId];
+    }
+    const area = this.shadowRoot.querySelector(
+      `[data-json-azioni="${deviceId}"]`,
+    );
+    if (area) {
+      try {
+        return JSON.parse(area.value || "[]");
+      } catch {
+        throw new Error("Il JSON delle azioni non è valido");
+      }
+    }
+    const device = (this._data?.dispositivi || []).find(
+      (x) => x.device_id === deviceId,
+    );
+    return device?.azioni || [];
+  }
+
+  // ── varchi ───────────────────────────────────────────────────────────
+
+  _vistaVarchi(d) {
+    const varchi = d.varchi || [];
+    const righe = varchi.length
+      ? varchi
+          .map(
+            (g) => `
+        <div class="varco" data-varco="${esc(g.id)}">
+          <div class="titolare">
+            ${icona("varco", "ico-grande")}
+            <div class="chi">
+              <input class="nome-tessera" data-v="name" value="${esc(g.name || "")}"
+                     placeholder="Nome del varco" />
+              <span class="sotto">
+                <code>${esc(g.id)}</code>
+                ${
+                  g.entita_presente
+                    ? `<span class="pill s-attiva">${esc(g.entita_stato)}</span>`
+                    : g.entity_id
+                      ? `<span class="pill s-blacklist">${icona("alert")} entità assente</span>`
+                      : `<span class="pill s-disabilitata">nessuna entità</span>`
+                }
+                ${
+                  g.usato_da && g.usato_da.length
+                    ? `· lo apre: ${g.usato_da.map(esc).join(", ")}`
+                    : "· non usato da nessun lettore"
+                }
+              </span>
+            </div>
+            <button class="mini danger" data-togli-varco="${esc(g.id)}">
+              ${icona("delete")}<span>Elimina</span></button>
+          </div>
+          <div class="riga">
+            <label>Entità che apre
+              <input data-v="entity_id" value="${esc(g.entity_id || "")}"
+                     placeholder="lock.portone · switch.cancelletto · cover.garage" /></label>
+            <label>Servizio (vuoto = dedotto)
+              <input data-v="service" value="${esc(g.service || "")}"
+                     placeholder="open · turn_on · open_cover" /></label>
+            <label>Rispegni dopo (s, 0 = mai)
+              <input type="number" data-v="auto_off_s" min="0"
+                     value="${esc(g.auto_off_s || 0)}" /></label>
+          </div>
+          <button data-salva-varco="${esc(g.id)}">${icona("check")} Salva varco</button>
+        </div>`,
+          )
+          .join("")
+      : `<p class="nota vuoto-gruppo">${icona("varco", "ico-grande")}
+           <span>Nessun varco. Aggiungine uno: è l'apertura fisica — porta,
+           cancelletto, garage — che poi i lettori aprono con le loro azioni.</span></p>`;
+
+    return `
+      <section class="card">
+        <h2>Varchi</h2>
+        <p class="nota">Un varco è un'apertura fisica, definita una volta e
+          riusabile da più lettori. Per farlo aprire, un lettore chiama
+          l'azione <code>access_control.open_gate</code> — che nell'editor
+          delle azioni compare come «Apri un varco».</p>
+        <div class="riga">
+          <input id="nuovo-varco" placeholder="Nome del nuovo varco (es. Cancelletto)" />
+          <button data-act="aggiungi-varco">${icona("piu")} Aggiungi varco</button>
+        </div>
+      </section>
+
+      <section class="card">${righe}</section>
+
+      <section class="card">
+        <h2>Il servizio si deduce</h2>
+        <p class="nota">Da <code>lock.</code> si apre con <b>open</b> (o
+          <b>unlock</b> se la serratura non espone lo scrocco), da
+          <code>switch.</code> con <b>turn_on</b>, da <code>cover.</code> con
+          <b>open_cover</b>. Il campo servizio serve solo quando l'ovvio non va
+          bene. Il «rispegni dopo» esiste perché un relè di cancello lasciato
+          acceso è un cancello che resta aperto.</p>
+      </section>`;
+  }
+
+  // ── finestre ─────────────────────────────────────────────────────────
+
+  _vistaFinestre(d) {
+    const finestre = d.finestre || [];
+    const lettori = d.dispositivi || [];
+
+    const righe = finestre.length
+      ? finestre
+          .map(
+            (w) => `
+        <div class="varco ${w.attiva ? "attiva-ora" : ""}" data-finestra="${esc(w.id)}">
+          <div class="titolare">
+            ${icona("orologio", "ico-grande")}
+            <div class="chi">
+              <input class="nome-tessera" data-w="name" value="${esc(w.name || "")}"
+                     placeholder="Nome della finestra" />
+              <span class="sotto">
+                ${
+                  w.attiva
+                    ? `<span class="pill s-attiva">attiva adesso</span>`
+                    : `<span class="pill s-disabilitata">non attiva</span>`
+                }
+                ${
+                  w.enabled
+                    ? ""
+                    : `<span class="pill s-blacklist">disabilitata</span>`
+                }
+              </span>
+            </div>
+            <button class="mini danger" data-togli-finestra="${esc(w.id)}">
+              ${icona("delete")}<span>Elimina</span></button>
+          </div>
+
+          <div class="riga">
+            <label>Dalle <input type="time" data-w="start" value="${esc(w.start)}" /></label>
+            <label>Alle <input type="time" data-w="end" value="${esc(w.end)}" /></label>
+            <label class="check"><input type="checkbox" data-w="enabled"
+              ${w.enabled ? "checked" : ""} /> Abilitata</label>
+          </div>
+
+          <div>
+            <span class="etichetta">Giorni</span>
+            <div class="giorni">
+              ${GIORNI.map(
+                (g, i) =>
+                  `<label class="check"><input type="checkbox" data-giorno-w="${i}"
+                     ${(w.days || []).includes(i) ? "checked" : ""} /> ${g}</label>`,
+              ).join("")}
+            </div>
+          </div>
+
+          <div>
+            <span class="etichetta">Chi può entrare</span>
+            <div class="ruoli">
+              ${["bambino", "adulto"]
+                .map(
+                  (r) =>
+                    `<label class="check"><input type="checkbox" data-ruolo-w="${r}"
+                       ${(w.roles || []).includes(r) ? "checked" : ""} />
+                       ${icona(r)} ${r}</label>`,
+                )
+                .join("")}
+            </div>
+          </div>
+
+          <div>
+            <span class="etichetta">Su quali lettori (nessuno spuntato = tutti)</span>
+            <div class="ruoli">
+              ${
+                lettori.length
+                  ? lettori
+                      .map(
+                        (l) =>
+                          `<label class="check"><input type="checkbox"
+                             data-lettore-w="${esc(l.device_id)}"
+                             ${(w.devices || []).includes(l.device_id) ? "checked" : ""} />
+                             ${esc(l.nome)}</label>`,
+                      )
+                      .join("")
+                  : `<span class="nota">Nessun lettore registrato.</span>`
+              }
+            </div>
+          </div>
+
+          <button data-salva-finestra="${esc(w.id)}">${icona("check")} Salva finestra</button>
+        </div>`,
+          )
+          .join("")
+      : `<p class="nota vuoto-gruppo">${icona("orologio", "ico-grande")}
+           <span><b>Nessuna finestra: non entra nessuno.</b> È il default
+           voluto — una configurazione vuota è una casa chiusa, non una casa
+           aperta. Aggiungi la prima qui sopra.</span></p>`;
+
+    return `
+      <section class="card">
+        <h2>Finestre</h2>
+        <p class="nota">Ogni finestra dice <b>quando</b> vale, <b>chi</b>
+          ammette e, se vuoi, <b>su quali lettori</b>. Fuori da ogni finestra
+          attiva non entra nessuno.</p>
+        <div class="riga">
+          <input id="nuova-finestra" placeholder="Nome (es. Rientro da scuola)" />
+          <button data-act="aggiungi-finestra">${icona("piu")} Aggiungi finestra</button>
+        </div>
+      </section>
+
+      <section class="card">${righe}</section>
+
+      <section class="card">
+        <h2>Oltre alle finestre</h2>
+        <div class="riga">
+          <label class="check"><input type="checkbox" id="set-presence_opens_all"
+            ${d.impostazioni.presence_opens_all ? "checked" : ""} />
+            Quando c'è qualcuno in casa, ammetti tutti</label>
+          <label class="check"><input type="checkbox" id="set-nearby_opens_adults"
+            ${d.impostazioni.nearby_opens_adults ? "checked" : ""} />
+            Quando un adulto è in avvicinamento, ammetti gli adulti</label>
+        </div>
+        <p class="nota">Si <b>sommano</b> alle finestre, non le scavalcano:
+          sono scorciatoie per i casi che valgono sempre.</p>
+        <button class="primario" data-act="salva-presenza">${icona("check")} Salva</button>
+      </section>`;
+  }
+
+  // ── notifiche ────────────────────────────────────────────────────────
+
+  _vistaNotifiche(d) {
+    const n = d.notifiche || {};
+    const tipi = d.opzioni.tipi_notifica || {};
+    const servizi = Object.keys(this._hass?.services?.notify || {})
+      .map((k) => `notify.${k}`)
+      .sort();
+
+    const selettore = (id, valore, vuoto) => `
+      <select ${id}>
+        <option value="">${vuoto}</option>
+        ${servizi
+          .map(
+            (sv) =>
+              `<option value="${esc(sv)}" ${sv === valore ? "selected" : ""}>${esc(sv)}</option>`,
+          )
+          .join("")}
+      </select>`;
+
+    const blocchi = Object.entries(tipi)
+      .map(([chiave, etichetta]) => {
+        const t = (n.tipi || {})[chiave] || {};
+        return `
+        <div class="varco" data-notifica="${esc(chiave)}">
+          <div class="titolare">
+            ${icona("campana", "ico-grande")}
+            <div class="chi">
+              <b>${esc(etichetta)}</b>
+              <span class="sotto"><code>${esc(chiave)}</code></span>
+            </div>
+            <label class="check"><input type="checkbox" data-n="attivo"
+              ${t.attivo ? "checked" : ""} /> Attiva</label>
+          </div>
+          <div class="riga">
+            <label>Destinatario
+              ${selettore('data-n="service"', t.service || "", "— usa quello generale —")}
+            </label>
+            <label class="check"><input type="checkbox" data-n="alta_priorita"
+              ${t.alta_priorita ? "checked" : ""} /> Alta priorità</label>
+            <label class="check"><input type="checkbox" data-n="immagine"
+              ${t.immagine ? "checked" : ""} /> Allega telecamera</label>
+          </div>
+          <label>Titolo
+            <input data-n="titolo" value="${esc(t.titolo || "")}" /></label>
+          <label>Messaggio
+            <input data-n="messaggio" value="${esc(t.messaggio || "")}" /></label>
+          <button data-salva-notifica="${esc(chiave)}">${icona("check")} Salva</button>
+        </div>`;
+      })
+      .join("");
+
+    return `
+      <section class="card ${n.master ? "" : "spento"}">
+        <h2>Master notifiche</h2>
+        <div class="riga">
+          <label class="check"><input type="checkbox" id="notif-master"
+            ${n.master ? "checked" : ""} /> Notifiche attive</label>
+          <label>Destinatario generale
+            ${selettore('id="notif-service"', n.service || "", "— nessuno —")}
+          </label>
+          <button data-act="salva-master-notifiche">${icona("check")} Salva</button>
+        </div>
+        <p class="nota">${
+          n.master
+            ? "Con il master spento non parte nessuna notifica, qualunque sia l'interruttore del singolo tipo."
+            : "<b>Master spento: non parte nessuna notifica</b>, nemmeno quelle di allarme."
+        }</p>
+      </section>
+
+      <section class="card">
+        <h2>Segnaposto disponibili</h2>
+        <p class="nota">Nei testi puoi usare
+          <code>{tessera}</code> <code>{titolare}</code> <code>{lettore}</code>
+          <code>{motivo}</code> <code>{ora}</code> <code>{stato}</code>.
+          Un segnaposto scritto male resta com'è invece di far fallire la
+          notifica — che nel caso dell'allarme sarebbe il momento peggiore per
+          scoprire un refuso.</p>
+      </section>
+
+      <section class="card">${blocchi}</section>`;
   }
 
   // ── registro ─────────────────────────────────────────────────────────
@@ -815,151 +1329,95 @@ class AccessControlPanel extends HTMLElement {
   // ── impostazioni ─────────────────────────────────────────────────────
 
   _vistaImpostazioni(d) {
-    const s = d.impostazioni;
-    const giorni = s.school_days || [];
-    const script = Object.keys(this._hass?.states || {})
-      .filter((e) => e.startsWith("script."))
-      .sort();
-    const opt = (lista, sel) =>
-      [`<option value="">— nessuno —</option>`]
-        .concat(
-          lista.map(
-            (e) =>
-              `<option value="${esc(e)}" ${e === sel ? "selected" : ""}>${esc(e)}</option>`,
-          ),
-        )
-        .join("");
-
-    const varchi = d.varchi
-      .map(
-        (g) => `
-      <div class="varco" data-gate="${esc(g.id)}">
-        <h3>${esc(g.name)} <span class="uid">${esc(g.id)}</span></h3>
-        <label>Script di apertura
-          <select data-g="action_script">${opt(script, g.action_script)}</select></label>
-        <label>Pre-hook (può vietare l'apertura)
-          <select data-g="pre_hook">${opt(script, g.pre_hook)}</select></label>
-        <label>Post-hook
-          <select data-g="post_hook">${opt(script, g.post_hook)}</select></label>
-        <label>Servizio di risposta al lettore
-          <input data-g="reader_service" value="${esc(g.reader_service || "")}"
-                 placeholder="esphome.rfid_ingresso_esito_accesso" /></label>
-        <label>Lettore di questo varco
-          <select data-g="reader_device_id">
-            <option value="">— nessuno —</option>
-            ${(d.dispositivi || [])
-              .map((l) => {
-                const extra = l.assente
-                  ? " (non più in Home Assistant)"
-                  : l.letture
-                    ? ` · ${l.letture} letture`
-                    : "";
-                return `<option value="${esc(l.device_id)}" ${
-                  l.device_id === g.reader_device_id ? "selected" : ""
-                }>${esc((l.nome || l.device_id) + extra)}</option>`;
-              })
-              .join("")}
-          </select></label>
-        ${
-          (d.dispositivi || []).length
-            ? ""
-            : `<p class="nota">Nessun lettore registrato: aggiungilo dalla
-                 scheda <b>Dispositivi</b>. Solo i lettori registrati possono
-                 essere associati a un varco — così l'elenco qui resta corto e
-                 fatto di cose che hai scelto tu.</p>`
-        }
-        <label class="check"><input type="checkbox" data-g="pre_hook_fail_closed"
-          ${g.pre_hook_fail_closed ? "checked" : ""} /> Se il pre-hook fallisce, non aprire</label>
-        <button data-save-gate="${esc(g.id)}">Salva varco</button>
-      </div>`,
-      )
-      .join("");
+    const st = d.impostazioni;
+    const sic = d.sicurezza || {};
 
     return `
       <section class="card">
-        <h2>Finestra scuola</h2>
-        <div class="riga">
-          <label>Inizio <input type="time" id="set-school_start" value="${esc(s.school_start)}" /></label>
-          <label>Fine <input type="time" id="set-school_end" value="${esc(s.school_end)}" /></label>
-        </div>
-        <div class="giorni">
-          ${GIORNI.map(
-            (g, i) =>
-              `<label class="check"><input type="checkbox" data-giorno="${i}"
-                 ${giorni.includes(i) ? "checked" : ""} /> ${g}</label>`,
-          ).join("")}
-        </div>
-      </section>
-
-      <section class="card">
         <h2>Comportamento</h2>
         <div class="riga">
-          <label>Ritardo sleep (min)
-            <input type="number" id="set-sleep_delay_min" value="${esc(s.sleep_delay_min)}" min="1" /></label>
+          <label>Ritardo ritorno a chiuso (min)
+            <input type="number" id="set-sleep_delay_min" min="1"
+                   value="${esc(st.sleep_delay_min)}" /></label>
           <label>Porta socchiusa (min)
-            <input type="number" id="set-door_ajar_min" value="${esc(s.door_ajar_min)}" min="1" /></label>
-          <label>Rate limit finestra (s)
-            <input type="number" id="set-rate_limit_window_s" value="${esc(s.rate_limit_window_s)}" min="1" /></label>
-          <label>Rate limit max
-            <input type="number" id="set-rate_limit_max" value="${esc(s.rate_limit_max)}" min="1" /></label>
+            <input type="number" id="set-door_ajar_min" min="1"
+                   value="${esc(st.door_ajar_min)}" /></label>
+          <label>Rate limit — finestra (s)
+            <input type="number" id="set-rate_limit_window_s" min="1"
+                   value="${esc(st.rate_limit_window_s)}" /></label>
+          <label>Rate limit — max letture
+            <input type="number" id="set-rate_limit_max" min="1"
+                   value="${esc(st.rate_limit_max)}" /></label>
         </div>
       </section>
 
       <section class="card">
-        <h2>Lockout lettori</h2>
-        <p class="nota"><b>segnala</b> non blocca nulla: notifica e conta.
-          <b>blocca</b> rifiuta ogni lettura, comprese quelle valide — e chi
-          deve entrare resta fuori finché non scade o non lo sblocchi da qui.
-          Il default è <i>segnala</i> perché bastano N letture di una tessera
-          qualsiasi per armare un lockout contro chi ha diritto di entrare,
-          mentre il brute-force dell'UID che il blocco fermerebbe richiederebbe
-          comunque secoli.</p>
+        <h2>Allarme</h2>
+        <p class="nota">Dopo <b>${esc(st.alarm_threshold)}</b> letture rifiutate
+          di fila il sistema va in allarme: i lettori si <b>spengono</b> e si
+          riparte solo a mano. È la difesa contro chi cicla codici con un
+          Flipper — ma è anche un modo per lasciare qualcuno fuori, quindi la
+          notifica di allarme porta con sé i pulsanti per aprire un varco dal
+          telefono senza sbloccare l'impianto.</p>
         <div class="riga">
-          <label>Modalità
-            <select id="set-lockout_mode">
-              ${d.opzioni.modalita_lockout
-                .map(
-                  (m) =>
-                    `<option value="${esc(m)}" ${m === s.lockout_mode ? "selected" : ""}>${esc(m)}</option>`,
-                )
-                .join("")}
-            </select></label>
-          <label>Soglia fallimenti
-            <input type="number" id="set-lockout_threshold" value="${esc(s.lockout_threshold)}" min="1" /></label>
-          <label>Durata (min)
-            <input type="number" id="set-lockout_duration_min" value="${esc(s.lockout_duration_min)}" min="1" /></label>
+          <label>Letture errate prima dell'allarme
+            <input type="number" id="set-alarm_threshold" min="1"
+                   value="${esc(st.alarm_threshold)}" /></label>
         </div>
+        <div class="riga">
+          <label class="check"><input type="checkbox" id="set-alarm_on_disabled_card"
+            ${st.alarm_on_disabled_card ? "checked" : ""} />
+            Allarme se passa una tessera disabilitata</label>
+          <label class="check"><input type="checkbox" id="set-alarm_on_blacklist"
+            ${st.alarm_on_blacklist ? "checked" : ""} />
+            Allarme se passa una tessera in blacklist</label>
+          <label class="check"><input type="checkbox" id="set-alarm_on_tamper"
+            ${st.alarm_on_tamper ? "checked" : ""} />
+            Allarme se un lettore viene manomesso</label>
+        </div>
+        ${
+          sic.in_allarme
+            ? `<button data-act="sblocca">${icona("ricarica")} Sblocca adesso</button>`
+            : ""
+        }
       </section>
 
       <section class="card">
-        <h2>Notifiche e sensori</h2>
+        <h2>Presenza e sensori</h2>
         <div class="riga">
-          <label>Servizio di notifica
-            <input id="set-notify_service" value="${esc(s.notify_service || "")}" /></label>
           <label>Telecamera
-            <input id="set-camera_entity" value="${esc(s.camera_entity || "")}" /></label>
+            <input id="set-camera_entity" value="${esc(st.camera_entity || "")}"
+                   placeholder="camera.ingresso" /></label>
           <label>Serratura
-            <input id="set-door_lock_entity" value="${esc(s.door_lock_entity || "")}" /></label>
+            <input id="set-door_lock_entity" value="${esc(st.door_lock_entity || "")}"
+                   placeholder="lock.portone" /></label>
           <label>Contatto porta
-            <input id="set-door_contact_entity" value="${esc(s.door_contact_entity || "")}" /></label>
+            <input id="set-door_contact_entity" value="${esc(st.door_contact_entity || "")}"
+                   placeholder="binary_sensor.contatto" /></label>
+          <label>Zona di avvicinamento
+            <input id="set-nearby_zone" value="${esc(st.nearby_zone || "")}"
+                   placeholder="zone.vicinanze_di_casa" /></label>
         </div>
-        <div class="riga">
-          <label class="check"><input type="checkbox" id="set-notify_on_entry"
-            ${s.notify_on_entry ? "checked" : ""} /> Notifica ogni accesso</label>
-          <label class="check"><input type="checkbox" id="set-notify_on_denied"
-            ${s.notify_on_denied ? "checked" : ""} /> Notifica ogni diniego</label>
-        </div>
+        <p class="nota">La serratura e il contatto sono <b>due fonti
+          indipendenti</b>: se si contraddicono — anta aperta mentre la
+          serratura dichiara chiusa a chiave — è un guasto o un forzamento, e
+          diventa lo stato <code>incoerente</code>.</p>
       </section>
 
       <section class="card">
-        <h2>Varchi e hook</h2>
-        <p class="nota">Il modulo non apre: decide, risponde al lettore e
-          chiama questi script. Senza script di apertura configurato nega e lo
-          scrive nel registro — non apre "di default".</p>
-        ${varchi}
+        <h2>Registro</h2>
+        <div class="riga">
+          <label>Righe conservate
+            <input type="number" id="set-log_max_entries" min="50" max="5000"
+                   value="${esc(st.log_max_entries)}" /></label>
+        </div>
+        <p class="nota">Le righe vivono nell'integration, non nel recorder: un
+          registro accessi che si autocancella dopo dieci giorni non è un
+          registro accessi.</p>
       </section>
 
-      <button class="primario" data-act="save-settings">Salva impostazioni</button>`;
+      <button class="primario" data-act="save-settings">
+        ${icona("check")} Salva impostazioni</button>`;
   }
 
   // ── azioni ───────────────────────────────────────────────────────────
@@ -969,6 +1427,178 @@ class AccessControlPanel extends HTMLElement {
     const val = (id) => r.getElementById(id)?.value ?? "";
     const num = (id) => Number(val(id));
     const chk = (id) => r.getElementById(id)?.checked ?? false;
+
+    // ── allarme ────────────────────────────────────────────────────────
+    r.querySelector('[data-act="sblocca"]')?.addEventListener("click", () =>
+      this._comando({ action: "clear_alarm" }),
+    );
+
+    // ── varchi ─────────────────────────────────────────────────────────
+    r.querySelector('[data-act="aggiungi-varco"]')?.addEventListener("click", () => {
+      const nome = r.getElementById("nuovo-varco")?.value.trim();
+      if (!nome) return;
+      this._comando({ action: "upsert_gate", gate: { name: nome } });
+    });
+
+    r.querySelectorAll("[data-salva-varco]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const id = el.dataset.salvaVarco;
+        const box = r.querySelector(`[data-varco="${id}"]`);
+        const gate = { id };
+        box.querySelectorAll("[data-v]").forEach((f) => {
+          gate[f.dataset.v] =
+            f.type === "number" ? Number(f.value) : f.value;
+        });
+        this._comando({ action: "upsert_gate", gate });
+      }),
+    );
+
+    r.querySelectorAll("[data-togli-varco]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (confirm("Eliminare il varco? I lettori che lo aprivano smetteranno di farlo.")) {
+          this._comando({ action: "remove_gate", gate_id: el.dataset.togliVarco });
+        }
+      }),
+    );
+
+    // ── finestre ───────────────────────────────────────────────────────
+    r.querySelector('[data-act="aggiungi-finestra"]')?.addEventListener("click", () => {
+      const nome = r.getElementById("nuova-finestra")?.value.trim();
+      if (!nome) return;
+      this._comando({ action: "upsert_window", window: { name: nome } });
+    });
+
+    r.querySelectorAll("[data-salva-finestra]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const id = el.dataset.salvaFinestra;
+        const box = r.querySelector(`[data-finestra="${id}"]`);
+        const w = { id };
+        box.querySelectorAll("[data-w]").forEach((f) => {
+          w[f.dataset.w] = f.type === "checkbox" ? f.checked : f.value;
+        });
+        w.days = [...box.querySelectorAll("[data-giorno-w]")]
+          .filter((c) => c.checked)
+          .map((c) => Number(c.dataset.giornoW));
+        w.roles = [...box.querySelectorAll("[data-ruolo-w]")]
+          .filter((c) => c.checked)
+          .map((c) => c.dataset.ruoloW);
+        w.devices = [...box.querySelectorAll("[data-lettore-w]")]
+          .filter((c) => c.checked)
+          .map((c) => c.dataset.lettoreW);
+        this._comando({ action: "upsert_window", window: w });
+      }),
+    );
+
+    r.querySelectorAll("[data-togli-finestra]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (confirm("Eliminare la finestra?")) {
+          this._comando({
+            action: "remove_window",
+            window_id: el.dataset.togliFinestra,
+          });
+        }
+      }),
+    );
+
+    r.querySelector('[data-act="salva-presenza"]')?.addEventListener("click", () =>
+      this._comando({
+        action: "set_settings",
+        settings: {
+          presence_opens_all: r.getElementById("set-presence_opens_all")?.checked,
+          nearby_opens_adults: r.getElementById("set-nearby_opens_adults")?.checked,
+        },
+      }),
+    );
+
+    // ── notifiche ──────────────────────────────────────────────────────
+    r.querySelector('[data-act="salva-master-notifiche"]')?.addEventListener(
+      "click",
+      () =>
+        this._comando({
+          action: "set_notifications",
+          changes: {
+            master: r.getElementById("notif-master")?.checked,
+            service: r.getElementById("notif-service")?.value || "",
+          },
+        }),
+    );
+
+    r.querySelectorAll("[data-salva-notifica]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const chiave = el.dataset.salvaNotifica;
+        const box = r.querySelector(`[data-notifica="${chiave}"]`);
+        const conf = {};
+        box.querySelectorAll("[data-n]").forEach((f) => {
+          conf[f.dataset.n] = f.type === "checkbox" ? f.checked : f.value;
+        });
+        this._comando({
+          action: "set_notifications",
+          changes: { tipi: { [chiave]: conf } },
+        });
+      }),
+    );
+
+    // ── configurazione del lettore ─────────────────────────────────────
+    r.querySelectorAll("[data-config-disp]").forEach((el) =>
+      el.addEventListener("click", () => {
+        this._configDisp = el.dataset.configDisp;
+        this._azioniInModifica = {};
+        this._render();
+      }),
+    );
+
+    r.querySelector("[data-chiudi-config]")?.addEventListener("click", () => {
+      this._configDisp = null;
+      this._azioniInModifica = {};
+      this._render();
+    });
+
+    r.querySelectorAll("[data-aggiungi-apertura]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const [deviceId, gateId] = el.dataset.aggiungiApertura.split("|");
+        let correnti;
+        try {
+          correnti = this._azioniCorrenti(deviceId);
+        } catch (err) {
+          this._errore = err.message;
+          this._render();
+          return;
+        }
+        this._azioniInModifica = this._azioniInModifica || {};
+        this._azioniInModifica[deviceId] = [
+          ...(correnti || []),
+          { action: "access_control.open_gate", data: { gate: gateId } },
+        ];
+        // Si salva subito: l'editor si ridisegna col valore nuovo, e non
+        // resta uno stato a metà fra quello che si vede e quello che c'è.
+        this._comando({
+          action: "set_device",
+          device_id: deviceId,
+          changes: { azioni: this._azioniInModifica[deviceId] },
+        });
+      }),
+    );
+
+    r.querySelectorAll("[data-salva-config]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const id = el.dataset.salvaConfig;
+        const box = r.querySelector(`[data-config="${id}"]`);
+        let azioni;
+        try {
+          azioni = this._azioniCorrenti(id);
+        } catch (err) {
+          this._errore = err.message;
+          this._render();
+          return;
+        }
+        const changes = { azioni };
+        box.querySelectorAll("[data-c]").forEach((f) => {
+          changes[f.dataset.c] = f.value;
+        });
+        this._azioniInModifica = {};
+        this._comando({ action: "set_device", device_id: id, changes });
+      }),
+    );
 
     r.querySelector('[data-act="ricarica"]')?.addEventListener("click", () =>
       this._ricarica(),
@@ -1227,31 +1857,25 @@ class AccessControlPanel extends HTMLElement {
     );
 
     r.querySelector('[data-act="save-settings"]')?.addEventListener("click", () => {
-      const giorni = [...r.querySelectorAll("[data-giorno]")]
-        .filter((c) => c.checked)
-        .map((c) => Number(c.dataset.giorno));
+      // Si manda solo quello che questa scheda mostra davvero: i ruoli
+      // stanno sulla scheda della persona e le notifiche nella loro, e
+      // mandarli da qui li azzererebbe perche' qui i loro campi non ci sono.
       this._comando({
         action: "set_settings",
         settings: {
-          school_start: val("set-school_start"),
-          school_end: val("set-school_end"),
-          school_days: giorni,
-          // person_roles non si tocca da qui: lo scrive la scheda della
-          // persona. Mandarlo da questa form lo azzererebbe, perche' qui
-          // i selettori dei ruoli non esistono piu'.
           sleep_delay_min: num("set-sleep_delay_min"),
           door_ajar_min: num("set-door_ajar_min"),
           rate_limit_window_s: num("set-rate_limit_window_s"),
           rate_limit_max: num("set-rate_limit_max"),
-          lockout_mode: val("set-lockout_mode"),
-          lockout_threshold: num("set-lockout_threshold"),
-          lockout_duration_min: num("set-lockout_duration_min"),
-          notify_service: val("set-notify_service"),
+          alarm_threshold: num("set-alarm_threshold"),
+          alarm_on_disabled_card: chk("set-alarm_on_disabled_card"),
+          alarm_on_blacklist: chk("set-alarm_on_blacklist"),
+          alarm_on_tamper: chk("set-alarm_on_tamper"),
           camera_entity: val("set-camera_entity"),
           door_lock_entity: val("set-door_lock_entity"),
           door_contact_entity: val("set-door_contact_entity"),
-          notify_on_entry: chk("set-notify_on_entry"),
-          notify_on_denied: chk("set-notify_on_denied"),
+          nearby_zone: val("set-nearby_zone"),
+          log_max_entries: num("set-log_max_entries"),
         },
       });
     });
@@ -1327,7 +1951,7 @@ class AccessControlPanel extends HTMLElement {
       .pill.e-granted { background:rgba(67,160,71,.2); color:#2e7d32; }
       .pill.e-denied { background:rgba(158,158,158,.25); color:var(--secondary-text-color); }
       .pill.e-enrolled { background:rgba(33,150,243,.2); color:#1565c0; }
-      .pill.e-blacklist, .pill.e-lockout { background:rgba(219,68,55,.2); color:#c62828; }
+      .pill.e-blacklist, .pill.e-alarm { background:rgba(219,68,55,.2); color:#c62828; }
       tr.stato-blacklist { background:rgba(219,68,55,.07); }
       tr.stato-disabilitata { opacity:.68; }
       .motivo-cella { font-size:.85rem; color:var(--secondary-text-color); }
@@ -1452,6 +2076,31 @@ class AccessControlPanel extends HTMLElement {
       .cand-testo b { font-size:.98rem; }
       tr.assente { opacity:.7; }
       tr.assente .pill .ico { width:13px; height:13px; vertical-align:-2px; }
+
+      /* ── due macchine a stati, affiancate ────────────────────────────── */
+      .due-stati { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+                   gap:12px; margin-bottom:14px; }
+      .stato-box { border-radius:10px; padding:14px 16px; display:flex;
+                   flex-direction:column; gap:3px; border:2px solid var(--divider-color); }
+      .stato-box b { font-size:1.3rem; }
+      .stato-box.ok { border-color:rgba(67,160,71,.55);
+                      background:rgba(67,160,71,.08); }
+      .stato-box.off { border-color:var(--divider-color); opacity:.85; }
+      .stato-box.male { border-color:rgba(219,68,55,.6);
+                        background:rgba(219,68,55,.1); }
+      .etichetta { font-size:.75rem; text-transform:uppercase; letter-spacing:.5px;
+                   color:var(--secondary-text-color); }
+
+      /* ── editor azioni ───────────────────────────────────────────────── */
+      .editor-azioni { margin:10px 0 18px; }
+      .json-azioni { width:100%; font-family:ui-monospace, monospace; font-size:.9rem;
+                     padding:10px; border-radius:8px; border:1px solid var(--divider-color);
+                     background:var(--card-background-color); color:var(--primary-text-color); }
+      .varco.attiva-ora { border-color:rgba(67,160,71,.6);
+                          background:rgba(67,160,71,.06); }
+      .card.spento { opacity:.75; border-left:4px solid var(--error-color,#db4437); }
+      code { font-family:ui-monospace, monospace; font-size:.85em;
+             background:var(--divider-color); padding:1px 5px; border-radius:4px; }
 
       /* ── legenda degli stati ─────────────────────────────────────────── */
       .spiega { list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:10px; }

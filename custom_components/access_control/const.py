@@ -25,25 +25,41 @@ PANEL_ICON: Final = "mdi:shield-key"
 
 
 # ───────────────────────────────────────────────────────────────────────────
-#  Macchina a stati
+#  Macchine a stati
 #
-#  Le credenziali sono accettate SOLO negli stati in cui il sistema è armato,
-#  e ogni stato ammette un sottoinsieme diverso di titolari. È questa logica
-#  che rende accettabile una credenziale debole: un tag clonato fuori finestra
-#  non apre nulla.
-# ───────────────────────────────────────────────────────────────────────────
-STATE_SLEEP: Final = "sleep"
-STATE_SCHOOL: Final = "finestra_scuola"
-STATE_ADULT_RETURN: Final = "rientro_adulto"
-STATE_OCCUPIED: Final = "casa_occupata"
+#  Le credenziali sono accettate SOLO quando una finestra le ammette: è questa
+#  logica che rende accettabile una credenziale debole, perché un tag clonato
+#  fuori finestra non apre nulla.
+#
+#  Due macchine separate, e la separazione è il punto., e la separazione è il punto.
+#
+#  AUTORIZZAZIONE dice "adesso chi può entrare": dipende da orari e presenza,
+#  cambia da sola durante il giorno, ed è normale che sia chiusa di notte.
+#
+#  SICUREZZA dice "sta succedendo qualcosa": ci si entra per attività
+#  sospetta e si esce solo a mano.
+#
+#  Tenerle in un unico stato renderebbe la dashboard illeggibile: non si
+#  distinguerebbe «è notte» da «qualcuno sta provando le tessere», che sono
+#  la cosa più diversa che ci sia.
+STATE_CLOSED: Final = "chiuso"
+STATE_OPEN: Final = "aperto"
+SYSTEM_STATES: Final = (STATE_CLOSED, STATE_OPEN)
 
-SYSTEM_STATES: Final = (STATE_SLEEP, STATE_SCHOOL, STATE_ADULT_RETURN, STATE_OCCUPIED)
+SECURITY_NORMAL: Final = "normale"
+SECURITY_ALARM: Final = "allarme"
+SECURITY_STATES: Final = (SECURITY_NORMAL, SECURITY_ALARM)
+
+ALARM_FAILED_READS: Final = "letture_errate_ripetute"
+ALARM_DISABLED_CARD: Final = "tessera_disabilitata_presentata"
+ALARM_BLACKLIST: Final = "tessera_in_blacklist_presentata"
+ALARM_TAMPER: Final = "manomissione_lettore"
 
 # Ruolo del titolare della card.
 #
 # Un titolare senza ruolo assegnato NON è un adulto: è un titolare senza
-# ruolo, e non compare in nessuna riga di STATE_ALLOWED_ROLES, quindi non apre
-# da nessuna parte. Il default opposto — trattarlo come adulto — sarebbe
+# ruolo, non compare fra i ruoli ammessi da nessuna finestra, e quindi non
+# apre da nessuna parte. Il default opposto — trattarlo come adulto — sarebbe
 # fail-open su una decisione di sicurezza: una persona mai configurata si
 # ritroverebbe i permessi più ampi invece dei più stretti, e nessuno se ne
 # accorgerebbe perché tutto funzionerebbe.
@@ -52,12 +68,28 @@ ROLE_ADULT: Final = "adulto"
 ROLE_NONE: Final = ""
 ROLES: Final = (ROLE_CHILD, ROLE_ADULT)
 
-# Chi può entrare in quale stato. Unica fonte della matrice §5.
-STATE_ALLOWED_ROLES: Final[dict[str, tuple[str, ...]]] = {
-    STATE_SLEEP: (),
-    STATE_SCHOOL: (ROLE_CHILD,),
-    STATE_ADULT_RETURN: (ROLE_ADULT,),
-    STATE_OCCUPIED: (ROLE_CHILD, ROLE_ADULT),
+# ───────────────────────────────────────────────────────────────────────────
+#  Finestre
+#
+#  Chi può entrare non è più una tabella scritta nel codice: sono finestre
+#  che crei tu. Ognuna dice quando vale, per quali ruoli, e — se vuoi — su
+#  quali lettori soltanto.
+#
+#  Fuori da ogni finestra attiva non entra nessuno. È il default: una
+#  configurazione vuota è una casa chiusa, non una casa aperta.
+# ───────────────────────────────────────────────────────────────────────────
+DEFAULT_WINDOW: Final[dict] = {
+    "id": "",
+    "name": "Nuova finestra",
+    "enabled": True,
+    "start": "15:30",
+    "end": "16:30",
+    # 0 = lunedì, come datetime.weekday()
+    "days": [0, 1, 2, 3, 4],
+    # Quali ruoli ammette. Entrambi = tutti.
+    "roles": [ROLE_CHILD],
+    # Vuoto = vale su tutti i lettori. Altrimenti solo su questi.
+    "devices": [],
 }
 
 
@@ -124,9 +156,11 @@ TECHNOLOGY_LABELS: Final[dict[str, str]] = {
 
 TECHNOLOGIES: Final = tuple(TECHNOLOGY_SECURITY)
 
-# Una credenziale debole apre solo su questi varchi, qualunque sia lo stato.
-# Il varco veicolare non si apre mai con un UID clonabile.
-WEAK_ALLOWED_GATES: Final = ("ingresso",)
+# Una credenziale debole non apre i varchi elencati qui da un lettore
+# qualsiasi: l'UID di una MIFARE Classic si clona in trenta secondi, e il
+# varco veicolare non si apre con qualcosa di clonabile.
+# Vuoto = nessuna restrizione aggiuntiva oltre a ruolo e finestra.
+WEAK_FORBIDDEN_GATES: Final[tuple[str, ...]] = ()
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -135,49 +169,60 @@ WEAK_ALLOWED_GATES: Final = ("ingresso",)
 RESULT_GRANTED: Final = "granted"
 RESULT_DENIED: Final = "denied"
 RESULT_BLACKLIST: Final = "blacklist"
-RESULT_LOCKOUT: Final = "lockout"
+RESULT_ALARM: Final = "alarm"
 # Lettura avvenuta in modalità enrollment: censita, non valutata.
 RESULT_ENROLLED: Final = "enrolled"
 
-REASON_MASTER_OFF: Final = "master_off"
-REASON_SYSTEM_ASLEEP: Final = "sistema_in_sleep"
-REASON_UNKNOWN_CARD: Final = "card_non_censita"
-REASON_CARD_DISABLED: Final = "card_disabilitata"
-REASON_CARD_BLACKLISTED: Final = "card_in_blacklist"
-REASON_ROLE_NOT_ALLOWED: Final = "titolare_non_ammesso_in_questo_stato"
+REASON_MASTER_OFF: Final = "master_spento"
+REASON_CLOSED: Final = "nessuna_finestra_attiva"
+REASON_UNKNOWN_CARD: Final = "tessera_non_censita"
+REASON_CARD_DISABLED: Final = "tessera_disabilitata"
+REASON_CARD_BLACKLISTED: Final = "tessera_in_blacklist"
+REASON_ROLE_NOT_ALLOWED: Final = "titolare_non_ammesso_ora"
 REASON_ROLE_NOT_ASSIGNED: Final = "titolare_senza_ruolo_assegnato"
-REASON_WEAK_ON_GATE: Final = "credenziale_debole_su_varco_non_consentito"
-REASON_NO_PERSON: Final = "card_senza_titolare"
+REASON_DEVICE_NOT_IN_WINDOW: Final = "lettore_escluso_dalla_finestra"
+REASON_WEAK_ON_GATE: Final = "credenziale_debole_su_varco_protetto"
+REASON_NO_PERSON: Final = "tessera_senza_titolare"
 REASON_RATE_LIMIT: Final = "rate_limit_superato"
-REASON_LOCKED_OUT: Final = "lettori_bloccati"
-REASON_NO_ACTION_SCRIPT: Final = "nessuno_script_di_apertura_configurato"
-REASON_READER_NOT_MAPPED: Final = "lettore_non_associato_a_nessun_varco"
-REASON_PRE_HOOK_VETO: Final = "apertura_vietata_dal_pre_hook"
-REASON_ACTION_FAILED: Final = "script_di_apertura_fallito"
+REASON_ALARM_ACTIVE: Final = "sistema_in_allarme"
+REASON_NO_ACTIONS: Final = "nessuna_azione_configurata_sul_lettore"
+REASON_DEVICE_NOT_REGISTERED: Final = "lettore_non_registrato"
+REASON_ACTIONS_FAILED: Final = "azioni_del_lettore_fallite"
 
+# Testi leggibili, per la dashboard e le notifiche. Il codice resta la chiave
+# stabile su cui si scrivono le automazioni; questo è solo per gli umani.
+REASON_LABELS: Final[dict[str, str]] = {
+    REASON_MASTER_OFF: "il master accessi è spento",
+    REASON_CLOSED: "nessuna finestra attiva in questo momento",
+    REASON_UNKNOWN_CARD: "tessera non censita",
+    REASON_CARD_DISABLED: "tessera disabilitata",
+    REASON_CARD_BLACKLISTED: "tessera in blacklist",
+    REASON_ROLE_NOT_ALLOWED: "il titolare non è ammesso in questa fascia",
+    REASON_ROLE_NOT_ASSIGNED: "al titolare non è stato assegnato un ruolo",
+    REASON_DEVICE_NOT_IN_WINDOW: "questo lettore è escluso dalla finestra attiva",
+    REASON_WEAK_ON_GATE: "credenziale troppo debole per questo varco",
+    REASON_NO_PERSON: "tessera senza titolare",
+    REASON_RATE_LIMIT: "troppe letture ravvicinate",
+    REASON_ALARM_ACTIVE: "sistema in allarme",
+    REASON_NO_ACTIONS: "il lettore non ha azioni configurate",
+    REASON_DEVICE_NOT_REGISTERED: "lettore non registrato",
+    REASON_ACTIONS_FAILED: "le azioni del lettore sono fallite",
+}
 
-# ───────────────────────────────────────────────────────────────────────────
-#  Lockout lettori
-# ───────────────────────────────────────────────────────────────────────────
-# `segnala` non blocca nulla: notifica, evento, contatore.
-# `blocca` rifiuta ogni lettura, comprese le card valide.
-#
-# Il default è `segnala` di proposito, ed è una scelta di sicurezza, non una
-# comodità: un lockout che blocca tutto è banalmente armabile contro chi deve
-# entrare — bastano N letture di una card qualsiasi — e in cambio difende da
-# un brute-force dell'UID che a 3 letture ogni 10 secondi richiederebbe
-# comunque secoli. Blocca l'unica persona che deve entrare e non ferma
-# nessuno che conti davvero.
-LOCKOUT_SIGNAL: Final = "segnala"
-LOCKOUT_BLOCK: Final = "blocca"
-LOCKOUT_MODES: Final = (LOCKOUT_SIGNAL, LOCKOUT_BLOCK)
+ALARM_LABELS: Final[dict[str, str]] = {
+    ALARM_FAILED_READS: "letture errate ripetute",
+    ALARM_DISABLED_CARD: "è stata presentata una tessera disabilitata",
+    ALARM_BLACKLIST: "è stata presentata una tessera in blacklist",
+    ALARM_TAMPER: "manomissione di un lettore",
+}
 
 
 # ───────────────────────────────────────────────────────────────────────────
 #  Eventi sul bus
 # ───────────────────────────────────────────────────────────────────────────
 EVENT_ACCESS: Final = f"{DOMAIN}_event"
-EVENT_LOCKOUT: Final = f"{DOMAIN}_lockout"
+EVENT_ALARM: Final = f"{DOMAIN}_alarm"
+EVENT_ALARM_CLEARED: Final = f"{DOMAIN}_alarm_cleared"
 EVENT_ENROLLED: Final = f"{DOMAIN}_enrolled"
 EVENT_DEVICE_REGISTERED: Final = f"{DOMAIN}_device_registered"
 
@@ -203,13 +248,13 @@ SIGNAL_STATE_CHANGED: Final = f"{DOMAIN}_state_changed"
 # ───────────────────────────────────────────────────────────────────────────
 DEFAULT_SETTINGS: Final[dict] = {
     "master": True,
-    # Finestra scuola
-    "school_start": "15:30",
-    "school_end": "16:30",
-    "school_days": [0, 1, 2, 3, 4],  # lun-ven, come datetime.weekday()
-    # Presenza e geofence
+    # Presenza e geofence: si sommano alle finestre, non le sostituiscono.
+    # Restano perché erano nella specifica di partenza e servono davvero —
+    # ma sono opzioni, non regole scritte nel codice.
     "person_entities": [],
     "nearby_zone": "",
+    "presence_opens_all": True,
+    "nearby_opens_adults": True,
     # Il ruolo appartiene alla persona, non alla tessera: due tessere dello
     # stesso titolare non possono avere autorizzazioni diverse per svista.
     # { "person.marco": "adulto", ... }
@@ -219,14 +264,11 @@ DEFAULT_SETTINGS: Final[dict] = {
     "door_ajar_min": 5,
     "rate_limit_window_s": 10,
     "rate_limit_max": 3,
-    # Lockout
-    "lockout_mode": LOCKOUT_SIGNAL,
-    "lockout_threshold": 5,
-    "lockout_duration_min": 15,
-    # Notifiche
-    "notify_service": "notify.notify",
-    "notify_on_entry": True,
-    "notify_on_denied": True,
+    # Allarme
+    "alarm_threshold": 3,
+    "alarm_on_disabled_card": True,
+    "alarm_on_blacklist": True,
+    "alarm_on_tamper": True,
     "camera_entity": "",
     # Sensori porta
     "door_lock_entity": "",
@@ -235,38 +277,181 @@ DEFAULT_SETTINGS: Final[dict] = {
     "log_max_entries": 500,
 }
 
-# Un varco: nome, script di apertura, hook e come si risponde al lettore.
-# Il modulo non apre mai da sé: senza `action_script` nega e lo scrive nel log.
+# ───────────────────────────────────────────────────────────────────────────
+#  Varchi
+#
+#  Un varco è un'apertura fisica — porta, garage, cancelletto, cancello —
+#  definita una volta sola e riusabile da più lettori. Aprirlo è un'azione
+#  come un'altra: il modulo espone `access_control.open_gate`, che si sceglie
+#  nell'editor delle azioni come qualunque altro servizio.
+#
+#  Il modulo non apre mai di sua iniziativa: apre solo eseguendo le azioni
+#  configurate su un lettore.
+# ───────────────────────────────────────────────────────────────────────────
 DEFAULT_GATE: Final[dict] = {
-    "id": "ingresso",
-    "name": "Ingresso",
-    "action_script": "",
-    "pre_hook": "",
-    "post_hook": "",
-    # Fail-open sul pre-hook: un pre-hook che va in errore si comporta come se
-    # non ci fosse, perché la decisione di base ha già superato tutta la
-    # policy. Fail-closed trasformerebbe un refuso in uno script in un bambino
-    # chiuso fuori. Chi vuole il contrario lo imposta per varco.
-    "pre_hook_fail_closed": False,
-    # Device id del lettore, per capire da quale varco arriva una lettura
-    # quando i varchi sono più di uno. L'evento `tag_scanned` porta con sé
-    # `device_id`: senza questa mappatura ogni lettura finirebbe sul primo
-    # varco, e una tessera debole aprirebbe il varco sbagliato.
-    "reader_device_id": "",
-    # Risposta al lettore. Va data SEMPRE, anche negando: se il modulo tace,
-    # il dispositivo emette il pattern "non raggiungibile" e chi è alla porta
+    "id": "porta",
+    "name": "Porta",
+    # L'entità che apre: lock, switch, cover, button o script.
+    "entity_id": "",
+    # Vuoto = si deduce dal dominio dell'entità. Si compila solo per forzare
+    # un comportamento diverso da quello ovvio (es. `unlock` invece di `open`
+    # su una serratura che non supporta l'apertura dello scrocco).
+    "service": "",
+    # Per gli switch impulsivi: dopo quanti secondi rispegnere. 0 = mai.
+    # Un relè di cancello lasciato acceso è un cancello che resta aperto.
+    "auto_off_s": 0,
+}
+
+# ───────────────────────────────────────────────────────────────────────────
+#  Lettori
+#
+#  La risposta al lettore appartiene al lettore, non al varco: è il
+#  dispositivo che deve suonare, e uno stesso varco può essere aperto da
+#  lettori diversi che rispondono in modi diversi.
+#
+#  Le azioni sono una sequenza di azioni Home Assistant, la stessa cosa che
+#  si scrive nell'editor delle automazioni, eseguita dall'helper `Script`.
+#  Non un formato mio: così l'editor grafico è quello vero e non c'è niente
+#  da tradurre fra quello che si vede e quello che gira.
+# ───────────────────────────────────────────────────────────────────────────
+DEFAULT_DEVICE: Final[dict] = {
+    "nome": "",
+    "note": "",
+    "azioni": [],
+    # Risposta acustica. Va data SEMPRE, anche negando: se il modulo tace, il
+    # dispositivo emette il pattern "non raggiungibile" e chi è alla porta
     # crede che il sistema sia guasto quando era solo fuori orario.
     "reader_service": "",
     "reader_field": "esito",
     "reader_ok_value": "ok",
     "reader_ko_value": "ko",
+    # Interruttore con cui Home Assistant spegne la lettura quando il sistema
+    # va in allarme. Senza, in allarme il lettore continuerebbe a leggere e a
+    # inondare l'API — che è esattamente ciò da cui l'allarme difende.
+    "enable_switch": "",
 }
 
-# Budget per il pre-hook. Il lettore va in timeout a 3 s: oltre questo, la
-# risposta arriverebbe dopo il pattern "non raggiungibile".
-PRE_HOOK_TIMEOUT_S: Final = 1.5
+# Quanto può durare la sequenza di azioni di un lettore prima di considerarla
+# piantata. Generosa: qui dentro può esserci un `delay`, e comunque la
+# risposta al lettore è già partita prima di arrivare a eseguire le azioni.
+ACTION_TIMEOUT_S: Final = 120
+
+# Servizio di apertura varco, esposto perché sia scegliibile nell'editor.
+SERVICE_OPEN_GATE: Final = "open_gate"
+
+# Servizi che aprono, per dominio dell'entità del varco.
+GATE_SERVICE_BY_DOMAIN: Final[dict[str, str]] = {
+    "lock": "open",
+    "switch": "turn_on",
+    "cover": "open_cover",
+    "button": "press",
+    "script": "turn_on",
+    "input_boolean": "turn_on",
+    "light": "turn_on",
+    "scene": "turn_on",
+}
+
+# ───────────────────────────────────────────────────────────────────────────
+#  Notifiche
+#
+#  Un master generale più un interruttore per tipo, ciascuno col proprio
+#  destinatario e il proprio testo. Segnaposto disponibili:
+#    {tessera} {titolare} {lettore} {motivo} {ora} {stato}
+# ───────────────────────────────────────────────────────────────────────────
+NOTIFY_ACCESS_OK: Final = "accesso_consentito"
+NOTIFY_ACCESS_KO: Final = "accesso_negato"
+NOTIFY_BLACKLIST: Final = "blacklist"
+NOTIFY_ALARM: Final = "allarme"
+NOTIFY_ENROLLED: Final = "tessera_censita"
+NOTIFY_DEVICE: Final = "lettore_registrato"
+NOTIFY_DOOR_AJAR: Final = "porta_socchiusa"
+NOTIFY_DOOR_FAULT: Final = "porta_incoerente"
+
+NOTIFY_LABELS: Final[dict[str, str]] = {
+    NOTIFY_ACCESS_OK: "Accesso consentito",
+    NOTIFY_ACCESS_KO: "Accesso negato",
+    NOTIFY_BLACKLIST: "Tessera in blacklist",
+    NOTIFY_ALARM: "Sistema in allarme",
+    NOTIFY_ENROLLED: "Tessera censita",
+    NOTIFY_DEVICE: "Lettore registrato",
+    NOTIFY_DOOR_AJAR: "Porta socchiusa",
+    NOTIFY_DOOR_FAULT: "Incoerenza sensori porta",
+}
+
+DEFAULT_NOTIFICATIONS: Final[dict] = {
+    "master": True,
+    "service": "notify.notify",
+    "tipi": {
+        NOTIFY_ACCESS_OK: {
+            "attivo": False,
+            "service": "",
+            "alta_priorita": False,
+            "immagine": False,
+            "titolo": "🔓 Accesso consentito",
+            "messaggio": "{tessera} — {titolare} al lettore {lettore}, ore {ora}",
+        },
+        NOTIFY_ACCESS_KO: {
+            "attivo": True,
+            "service": "",
+            "alta_priorita": False,
+            "immagine": True,
+            "titolo": "⛔ Accesso negato",
+            "messaggio": "{tessera} al lettore {lettore} — motivo: {motivo}",
+        },
+        NOTIFY_BLACKLIST: {
+            "attivo": True,
+            "service": "",
+            "alta_priorita": True,
+            "immagine": True,
+            "titolo": "🚨 Tessera in blacklist",
+            "messaggio": "È stata usata {tessera} al lettore {lettore}, ore {ora}",
+        },
+        NOTIFY_ALARM: {
+            "attivo": True,
+            "service": "",
+            "alta_priorita": True,
+            "immagine": True,
+            "titolo": "🚨 Sistema in allarme",
+            "messaggio": "Motivo: {motivo}. I lettori sono spenti finché non sblocchi.",
+        },
+        NOTIFY_ENROLLED: {
+            "attivo": True,
+            "service": "",
+            "alta_priorita": False,
+            "immagine": False,
+            "titolo": "🆕 Tessera censita",
+            "messaggio": "{tessera} — {motivo}. Assegnale un titolare per attivarla.",
+        },
+        NOTIFY_DEVICE: {
+            "attivo": True,
+            "service": "",
+            "alta_priorita": False,
+            "immagine": False,
+            "titolo": "📟 Lettore registrato",
+            "messaggio": "{lettore} è stato aggiunto all'impianto.",
+        },
+        NOTIFY_DOOR_AJAR: {
+            "attivo": True,
+            "service": "",
+            "alta_priorita": True,
+            "immagine": True,
+            "titolo": "🚪 Porta socchiusa",
+            "messaggio": "La porta è aperta da troppo tempo.",
+        },
+        NOTIFY_DOOR_FAULT: {
+            "attivo": True,
+            "service": "",
+            "alta_priorita": True,
+            "immagine": True,
+            "titolo": "⚠️ Incoerenza sensori porta",
+            "messaggio": "Anta aperta ma serratura chiusa: guasto o forzamento.",
+        },
+    },
+}
 
 CONF_DEVICES: Final = "devices"
+CONF_WINDOWS: Final = "windows"
+CONF_NOTIFICATIONS: Final = "notifications"
 CONF_GATES: Final = "gates"
 CONF_CARDS: Final = "cards"
 CONF_SETTINGS: Final = "settings"

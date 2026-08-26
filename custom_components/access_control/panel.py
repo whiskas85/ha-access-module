@@ -13,15 +13,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
+    ALARM_LABELS,
     CARD_STATES,
     DEFAULT_GATE,
+    DEFAULT_WINDOW,
     DEVICE_LEARNING_TIMEOUT_S,
     DOMAIN,
     ENROLLMENT_TIMEOUT_S,
-    LOCKOUT_MODES,
+    NOTIFY_LABELS,
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL,
+    REASON_LABELS,
     ROLES,
     TECHNOLOGIES,
     TECHNOLOGY_SECURITY,
@@ -175,10 +178,13 @@ def _dispositivi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
                 "note": voce.get("note", ""),
                 "letture": osservato.get("letture", 0),
                 "ultima": osservato.get("ultima"),
+                "azioni": voce.get("azioni") or [],
+                "reader_service": voce.get("reader_service", ""),
+                "enable_switch": voce.get("enable_switch", ""),
+                # Quali varchi apre, dedotto dalle sue azioni: non è un campo
+                # da tenere allineato a mano, è una conseguenza.
                 "varchi": [
-                    g["id"]
-                    for g in store.gates.values()
-                    if g.get("reader_device_id") == device_id
+                    g["id"] for g in store.gates.values() if _usa_varco(voce, g["id"])
                 ],
             }
         )
@@ -186,29 +192,40 @@ def _dispositivi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
 
 
 def _varchi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
-    """I varchi, con il nome del lettore a cui sono legati.
+    """I varchi, con lo stato attuale dell'entità che li apre.
 
-    Il `reader_device_id` non è un dettaglio estetico: è ciò che permette di
-    capire da quale lettore arriva una lettura. Se manca, ogni lettura viene
-    attribuita al primo varco — con un lettore solo non cambia niente, con due
-    significa che il secondo non riceve mai nulla e che il censimento aperto
-    lì resterebbe in attesa per sempre. Perciò il pannello deve poterlo dire.
+    Un varco che punta a un'entità sparita va detto: da fuori un'apertura che
+    non succede sembra un problema di tessera, e si va a cercare dalla parte
+    sbagliata.
     """
-    registry = dr.async_get(hass)
-    varchi = []
+    fuori = []
     for gate in store.gates.values():
-        device_id = gate.get("reader_device_id") or ""
-        device = registry.async_get(device_id) if device_id else None
-        varchi.append(
+        entity_id = gate.get("entity_id") or ""
+        stato = hass.states.get(entity_id) if entity_id else None
+        fuori.append(
             {
                 **gate,
-                "reader_device_name": (
-                    (device.name_by_user or device.name) if device else ""
-                ),
-                "reader_device_mancante": not device_id,
+                "entita_presente": stato is not None,
+                "entita_stato": stato.state if stato else "",
+                "usato_da": [
+                    d.get("nome") or k
+                    for k, d in store.devices.items()
+                    if _usa_varco(d, gate["id"])
+                ],
             }
         )
-    return varchi
+    return sorted(fuori, key=lambda g: (g.get("name") or "").lower())
+
+
+def _usa_varco(device: dict[str, Any], gate_id: str) -> bool:
+    """Questo lettore apre quel varco fra le sue azioni?"""
+    import json
+
+    try:
+        blob = json.dumps(device.get("azioni") or [])
+    except (TypeError, ValueError):
+        return False
+    return f'"{gate_id}"' in blob and "open_gate" in blob
 
 
 def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
@@ -229,12 +246,30 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             "porta": coordinator.door_status(),
             "presenza": coordinator.presence_recent(),
             "adulto_vicino": coordinator.adult_nearby(),
-            "finestra_scuola": coordinator.school_window_active(),
-            "lockout": store.is_locked_out,
+            "finestre_attive": [
+                w.get("name") or w["id"] for w in coordinator.active_windows()
+            ],
+            "in_allarme": store.in_alarm,
             "fallimenti": store.failure_streak,
-            "bloccati_fino_a": store.locked_until,
             "negati_oggi": store.denied_today(),
+            "ruoli_ammessi": coordinator.open_roles(),
         },
+        "sicurezza": {
+            "stato": store.security_state,
+            "in_allarme": store.in_alarm,
+            "motivo": ALARM_LABELS.get(store.alarm_reason, store.alarm_reason),
+            "dal": store.alarm_since,
+            "fallimenti": store.failure_streak,
+            "soglia": store.settings.get("alarm_threshold"),
+        },
+        "finestre": sorted(
+            (
+                {**w, "attiva": coordinator.window_active(w)}
+                for w in store.windows.values()
+            ),
+            key=lambda w: (w.get("start") or ""),
+        ),
+        "notifiche": store.notifications,
         "enrollment": {
             "attivo": store.enrollment_active,
             "secondi": store.enrollment_seconds_left,
@@ -267,8 +302,10 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             "tecnologie": list(TECHNOLOGIES),
             "sicurezza_per_tecnologia": TECHNOLOGY_SECURITY,
             "ruoli": list(ROLES),
-            "modalita_lockout": list(LOCKOUT_MODES),
             "varco_predefinito": DEFAULT_GATE,
+            "finestra_predefinita": DEFAULT_WINDOW,
+            "tipi_notifica": NOTIFY_LABELS,
+            "motivi": REASON_LABELS,
         },
     }
 
@@ -356,6 +393,26 @@ class AccessCommandView(HomeAssistantView):
                 await store.async_register_device(
                     body["device_id"], body.get("nome", ""), body.get("note", "")
                 )
+
+            elif action == "set_device":
+                await store.async_update_device(
+                    body["device_id"], body.get("changes") or {}
+                )
+
+            elif action == "upsert_window":
+                await store.async_upsert_window(body.get("window") or {})
+                coordinator.async_refresh()
+
+            elif action == "remove_window":
+                await store.async_remove_window(body["window_id"])
+                coordinator.async_refresh()
+
+            elif action == "set_notifications":
+                await store.async_update_notifications(body.get("changes") or {})
+
+            elif action == "clear_alarm":
+                await store.async_clear_alarm()
+                await data["evaluator"].async_set_readers_enabled(True)
 
             elif action == "unregister_device":
                 await store.async_unregister_device(body["device_id"])

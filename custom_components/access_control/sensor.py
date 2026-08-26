@@ -45,7 +45,17 @@ class AccessStateSensor(AccessEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        return self.store.system_state or "sleep"
+        return self.store.system_state or "chiuso"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "sicurezza": self.store.security_state,
+            "ruoli_ammessi": self.coordinator.open_roles(),
+            "finestre_attive": [
+                w.get("name") or w["id"] for w in self.coordinator.active_windows()
+            ],
+        }
 
 
 class AccessReasonSensor(AccessEntity, SensorEntity):
@@ -130,8 +140,8 @@ class AccessDeniedTodaySensor(AccessEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
             "fallimenti_consecutivi": self.store.failure_streak,
-            "lettori_bloccati": self.store.is_locked_out,
-            "bloccati_fino_a": self.store.locked_until,
+            "in_allarme": self.store.in_alarm,
+            "soglia_allarme": self.store.settings.get("alarm_threshold"),
         }
 
 

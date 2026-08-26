@@ -51,10 +51,14 @@ class AccessStartEnrollmentButton(AccessEntity, ButtonEntity):
 
 
 class AccessUnlockReadersButton(AccessEntity, ButtonEntity):
-    """Sblocca i lettori dopo un lockout, senza aspettare la scadenza."""
+    """Sblocca l'allarme e riaccende i lettori.
 
-    _attr_name = "Sblocca lettori"
-    _attr_icon = "mdi:lock-open-check"
+    Le due cose insieme, sempre: sbloccare senza riaccendere lascerebbe un
+    impianto che si dichiara normale e non legge niente.
+    """
+
+    _attr_name = "Sblocca allarme"
+    _attr_icon = "mdi:shield-refresh"
 
     @property
     def unique_id(self) -> str:
@@ -62,10 +66,13 @@ class AccessUnlockReadersButton(AccessEntity, ButtonEntity):
 
     @property
     def available(self) -> bool:
-        return self.store.is_locked_out or self.store.failure_streak > 0
+        return self.store.in_alarm or self.store.failure_streak > 0
 
     async def async_press(self) -> None:
-        await self.store.async_unlock_readers()
+        await self.store.async_clear_alarm()
+        evaluator = self.hass.data[DOMAIN].get("evaluator")
+        if evaluator is not None:
+            await evaluator.async_set_readers_enabled(True)
 
 
 class AccessClearLogButton(AccessEntity, ButtonEntity):

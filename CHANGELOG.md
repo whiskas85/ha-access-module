@@ -8,6 +8,81 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Due macchine a stati separate, e la separazione è il punto.**
+  *Autorizzazione* dice chi può entrare adesso; *Sicurezza* dice se sta
+  succedendo qualcosa. Tenerle in un unico stato rendeva la dashboard
+  illeggibile: non si distingueva «è notte» da «qualcuno sta provando le
+  tessere», che sono la cosa più diversa che ci sia
+  - Dopo **N letture rifiutate di fila** (default 3), o se passa una tessera
+    disabilitata o in blacklist, o se un lettore viene manomesso, il sistema
+    va in **allarme**: i lettori si spengono e si riparte solo a mano
+  - L'allarme **sopravvive a un riavvio**: non si esce da un blocco di
+    sicurezza riavviando
+  - Un secondo allarme non sovrascrive il motivo del primo — quello che conta
+    è cosa è successo per primo
+- **Finestre configurabili al posto della «finestra scuola».** Ne crei quante
+  vuoi: nome, orario, giorni, quali ruoli ammette e — se vuoi — su quali
+  lettori soltanto. **Senza finestre non entra nessuno**: una configurazione
+  vuota è una casa chiusa, non una casa aperta
+  - Le opzioni di presenza («c'è qualcuno in casa», «un adulto sta
+    rientrando») restano ma si **sommano** alle finestre invece di essere
+    regole scritte nel codice
+- **Le azioni sono l'editor delle automazioni di Home Assistant.** Non un
+  formato inventato: la sequenza è quella vera, eseguita dall'helper `Script`.
+  `choose`, `if`, `delay`, i template funzionano perché non sono riscritti — e
+  quello che vedi nell'editor è letteralmente quello che gira
+  - **Ogni lettore ha le sue**: il tag valida l'accesso, il dispositivo decide
+    l'azione
+  - Scorciatoie per aggiungere l'apertura di un varco con un clic
+- **Scheda Varchi.** Un varco è un'apertura fisica definita una volta e
+  riusabile: si apre con `access_control.open_gate`, che nell'editor compare
+  come un'azione qualsiasi. Il servizio si deduce dal dominio dell'entità, e
+  gli switch impulsivi hanno il rispegnimento automatico — un relè di cancello
+  lasciato acceso è un cancello che resta aperto
+- **Scheda Notifiche.** Master generale, interruttore per tipo, destinatario e
+  testo per ciascuno, con segnaposto `{tessera}` `{titolare}` `{lettore}`
+  `{motivo}` `{ora}` `{stato}`. Un segnaposto scritto male resta com'è invece
+  di far fallire la notifica — che per un allarme sarebbe il momento peggiore
+  per scoprire un refuso
+- **Dashboard di stato che racconta il sistema**: le due macchine affiancate,
+  cosa le muove, e cosa succede dopo N errori
+
+### Sicurezza
+
+- **Il registro tag di Home Assistant non si può più inondare.** Il firmware
+  non chiama più `homeassistant.tag_scanned`, che faceva creare a HA
+  un'entità per **ogni UID mai visto**: chi cicla centomila codici con un
+  Flipper creava centomila entità, rendendo inservibile il registro e
+  gonfiando il database. Ora il nodo manda un evento suo, e il tag entra nel
+  registro **solo dopo che la lettura è stata validata**
+- **In allarme i lettori smettono di leggere.** Ferma l'inondazione alla
+  radice invece di limitarsi a rifiutarla dopo averla ricevuta
+- **La via d'uscita.** La notifica di allarme porta i pulsanti per aprire un
+  varco dal telefono **senza sbloccare l'impianto**: chi è alla porta entra,
+  la difesa resta su
+
+### Modificato
+
+- Il pre-hook e il post-hook non esistono più: erano un'astrazione che non
+  serviva a niente di concreto, e l'editor di azioni copre tutto quello che
+  facevano e molto altro
+- Il lockout in modalità «segnala» è stato sostituito dall'allarme vero
+
+### Firmware ESP32
+
+- **Blip di 25 ms appena legge**, prima di tutto: dice «ti ho letto» mentre la
+  decisione è ancora in viaggio
+- **Interruttore di lettura** esposto a HA, che è ciò che l'allarme spegne.
+  Riparte acceso dopo un blackout: un lettore muto dopo un calo di tensione è
+  un guasto silenzioso
+- **LED RGB** su GPIO25/26/27 — verde tenue a riposo, verde all'ok, rosso al
+  ko, **rosso fisso** quando la lettura è disabilitata
+- **Tamper predisposto** su GPIO32, da cablare
+- Pattern acustico dedicato all'allarme
+
+
 ## [0.7.0] - 2026-08-26
 
 ### Aggiunto

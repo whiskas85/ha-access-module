@@ -1,35 +1,67 @@
+open_gate:
+  name: Apri un varco
+  description: >-
+    Apre un varco configurato nel modulo. È l'azione da scegliere dentro le
+    azioni di un lettore per far aprire porta, cancelletto o garage senza
+    ripetere ogni volta entità e servizio.
+  fields:
+    gate:
+      name: Varco
+      description: Id del varco, come compare nella scheda Varchi.
+      required: true
+      example: porta
+      selector:
+        text:
+
 scan:
   name: Valuta una lettura
   description: >-
     Inietta la lettura di una credenziale come se arrivasse da un lettore.
-    Utile per provare tutta la catena senza andare al varco, e per i lettori
-    che non passano dall'integrazione Tag.
+    Utile per provare tutta la catena senza andare al varco.
   fields:
     uid:
       name: UID
-      description: UID della credenziale, in qualunque formato.
       required: true
       example: "04-A1-B2-C3"
       selector:
         text:
-    gate:
-      name: Varco
-      description: Id del varco. Se omesso si usa il primo configurato.
-      example: ingresso
+    device:
+      name: Lettore
+      description: device_id del lettore da simulare.
       selector:
         text:
 
 start_enrollment:
-  name: Abilita lettura tessera
+  name: Aggiungi una tessera
   description: >-
-    Apre la finestra di censimento: la prima tessera passata al lettore viene
-    registrata invece che valutata, con UID e tecnologia rilevati da sola.
-    Si chiude alla prima lettura o alla scadenza, quale delle due viene prima.
-    Nasce senza titolare e finché non gliene viene assegnato uno non apre nulla.
+    Apre la finestra di censimento: la prima tessera passata a un lettore
+    registrato viene aggiunta al registro invece che valutata, con UID e tipo
+    di chip rilevati da soli. Nasce senza titolare e finché non gliene assegni
+    uno non apre nulla.
+  fields:
+    device:
+      name: Lettore
+      description: Su quale lettore ascoltare. Vuoto = uno qualsiasi fra i registrati.
+      selector:
+        text:
+    seconds:
+      name: Durata
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 300
+          unit_of_measurement: s
+
+start_device_learning:
+  name: Riconosci un lettore
+  description: >-
+    Apre il riconoscimento automatico: la prima lettura registra il
+    DISPOSITIVO che l'ha fatta. La tessera usata viene scartata — serve solo a
+    far dire al lettore «sono io», e non viene censita né valutata.
   fields:
     seconds:
       name: Durata
-      description: Secondi di attesa prima che la finestra si chiuda da sola.
       default: 60
       selector:
         number:
@@ -40,9 +72,8 @@ start_enrollment:
 enroll_card:
   name: Censisci una tessera a mano
   description: >-
-    Aggiunge una tessera al registro partendo da un UID noto, o aggiorna una
-    già presente. Nell'uso normale si preferisce "Abilita lettura tessera",
-    che evita di trascrivere l'UID.
+    Aggiunge una tessera partendo da un UID noto. Nell'uso normale si
+    preferisce «Aggiungi una tessera», che evita di trascrivere l'UID.
   fields:
     uid:
       name: UID
@@ -51,23 +82,19 @@ enroll_card:
         text:
     name:
       name: Nome
-      description: Etichetta leggibile, es. "portachiavi scuola".
       selector:
         text:
     person:
       name: Titolare
-      description: L'entità person a cui la tessera è abbinata.
       selector:
         entity:
           domain: person
     technology:
       name: Tecnologia
       description: >-
-        Di norma va omessa: viene rilevata dall'UID. Forzarla serve solo per le
-        credenziali che il lettore non può classificare — impronte, o tessere
-        verificate crittograficamente da un componente dedicato. Dichiarare a
-        mano una tecnologia "forte" non rende forte la credenziale: fa solo
-        credere al motore di autorizzazione qualcosa che nessuno ha verificato.
+        Di norma va omessa: viene rilevata dall'UID. Dichiarare a mano una
+        tecnologia «forte» non rende forte la credenziale: fa solo credere al
+        motore di autorizzazione qualcosa che nessuno ha verificato.
       selector:
         select:
           options:
@@ -90,12 +117,10 @@ set_card_state:
   fields:
     card_id:
       name: Id tessera
-      description: In alternativa all'UID.
       selector:
         text:
     uid:
       name: UID
-      description: In alternativa all'id.
       selector:
         text:
     state:
@@ -112,8 +137,7 @@ remove_card:
   name: Elimina una tessera
   description: >-
     Rimuove la tessera dal registro. Dopo l'eliminazione quell'UID risulta
-    sconosciuto e non allarma più: per una tessera persa serve la blacklist,
-    non l'eliminazione.
+    sconosciuto e non allarma più: per una tessera persa serve la blacklist.
   fields:
     card_id:
       name: Id tessera
@@ -124,9 +148,35 @@ remove_card:
       selector:
         text:
 
-unlock_readers:
-  name: Sblocca i lettori
-  description: Azzera il lockout e i fallimenti consecutivi.
+clear_alarm:
+  name: Sblocca l'allarme
+  description: >-
+    Riporta il sistema in stato normale e riaccende la lettura su tutti i
+    lettori. Le due cose insieme: sbloccare senza riaccendere lascerebbe un
+    impianto che si dichiara normale e non legge niente.
+
+report_tamper:
+  name: Segnala manomissione
+  description: >-
+    Porta il sistema in allarme per manomissione di un lettore. Da chiamare
+    dall'automazione agganciata al microswitch di tamper.
+  fields:
+    device:
+      name: Lettore
+      selector:
+        text:
+
+set_reading_enabled:
+  name: Abilita o disabilita la lettura
+  description: >-
+    Accende o spegne la lettura RFID su tutti i lettori registrati, agendo
+    sull'interruttore configurato su ciascuno.
+  fields:
+    enabled:
+      name: Abilitata
+      required: true
+      selector:
+        boolean:
 
 clear_log:
   name: Svuota il registro accessi

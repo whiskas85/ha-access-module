@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import ALARM_LABELS, DOMAIN
 from .entity import AccessEntity
 
 
@@ -25,11 +25,11 @@ async def async_setup_entry(
     async_add_entities(
         [
             AccessArmedSensor(entry.entry_id, store, coordinator),
-            AccessSchoolWindowSensor(entry.entry_id, store, coordinator),
+            AccessWindowSensor(entry.entry_id, store, coordinator),
             AccessPresenceSensor(entry.entry_id, store, coordinator),
             AccessAdultNearbySensor(entry.entry_id, store, coordinator),
             AccessDoorAjarSensor(entry.entry_id, store, coordinator),
-            AccessLockoutSensor(entry.entry_id, store, coordinator),
+            AccessAlarmSensor(entry.entry_id, store, coordinator),
             AccessEnrollmentSensor(entry.entry_id, store, coordinator),
         ]
     )
@@ -47,20 +47,23 @@ class AccessArmedSensor(AccessEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        return self.coordinator.is_armed
+        # Armato = una finestra ammette qualcuno E non siamo in allarme.
+        # Sono le due macchine a stati messe insieme, ed è l'unico posto dove
+        # ha senso farlo: qui la domanda è "adesso aprirebbe?".
+        return self.coordinator.is_open and not self.store.in_alarm
 
 
-class AccessSchoolWindowSensor(AccessEntity, BinarySensorEntity):
-    _attr_name = "Finestra scuola attiva"
+class AccessWindowSensor(AccessEntity, BinarySensorEntity):
+    _attr_name = "Finestra attiva"
     _attr_icon = "mdi:school"
 
     @property
     def unique_id(self) -> str:
-        return f"{self._entry_id}_school_window"
+        return f"{self._entry_id}_window"
 
     @property
     def is_on(self) -> bool:
-        return self.coordinator.school_window_active()
+        return bool(self.coordinator.active_windows())
 
 
 class AccessPresenceSensor(AccessEntity, BinarySensorEntity):
@@ -137,23 +140,28 @@ class AccessEnrollmentSensor(AccessEntity, BinarySensorEntity):
         return {"secondi_rimasti": self.store.enrollment_seconds_left}
 
 
-class AccessLockoutSensor(AccessEntity, BinarySensorEntity):
-    _attr_name = "Lettori bloccati"
-    _attr_icon = "mdi:lock-alert"
-    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+class AccessAlarmSensor(AccessEntity, BinarySensorEntity):
+    """Sistema in allarme: i lettori sono spenti finché non si sblocca."""
+
+    _attr_name = "Allarme"
+    _attr_icon = "mdi:shield-alert"
+    _attr_device_class = BinarySensorDeviceClass.SAFETY
 
     @property
     def unique_id(self) -> str:
-        return f"{self._entry_id}_lockout"
+        return f"{self._entry_id}_alarm"
 
     @property
     def is_on(self) -> bool:
-        return self.store.is_locked_out
+        return self.store.in_alarm
 
     @property
     def extra_state_attributes(self) -> dict:
         return {
-            "modalita": self.store.settings.get("lockout_mode"),
+            "motivo": ALARM_LABELS.get(
+                self.store.alarm_reason, self.store.alarm_reason
+            ),
+            "dal": self.store.alarm_since,
             "fallimenti_consecutivi": self.store.failure_streak,
-            "fino_a": self.store.locked_until,
+            "soglia": self.store.settings.get("alarm_threshold"),
         }
