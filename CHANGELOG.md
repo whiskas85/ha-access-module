@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-27
+
 ### Aggiunto
 
 - **Due macchine a stati separate, e la separazione è il punto.**
@@ -81,7 +83,6 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
   ko, **rosso fisso** quando la lettura è disabilitata
 - **Tamper predisposto** su GPIO32, da cablare
 - Pattern acustico dedicato all'allarme
-
 
 ## [0.7.0] - 2026-08-26
 

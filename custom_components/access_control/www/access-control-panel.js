@@ -3,7 +3,7 @@
 // Allineata da scripts/bump.py alla versione del manifest: il pannello la
 // confronta con quella dell'integration in esecuzione per accorgersi che i
 // file sono stati aggiornati ma Home Assistant non è ancora ripartito.
-const PANEL_VERSION = "0.7.0";
+const PANEL_VERSION = "0.8.0";
 
 const TABS = [
   { id: "stato", label: "Stato" },
