@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-26
+
 ### Aggiunto
 
 - **Il censimento si apre su un lettore preciso.** Un pulsante per varco, che
