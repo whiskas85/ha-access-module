@@ -36,6 +36,7 @@ from .const import (
     REASON_PRE_HOOK_VETO,
     REASON_RATE_LIMIT,
     REASON_ROLE_NOT_ALLOWED,
+    REASON_ROLE_NOT_ASSIGNED,
     REASON_SYSTEM_ASLEEP,
     REASON_UNKNOWN_CARD,
     REASON_WEAK_ON_GATE,
@@ -247,6 +248,11 @@ class AccessEvaluator:
 
         if not self.coordinator.is_armed:
             return Decision(RESULT_DENIED, REASON_SYSTEM_ASLEEP, card, role)
+
+        # Titolare senza ruolo: non è un adulto per default, è una decisione
+        # che manca. Si nega e si dice quale, invece di indovinare.
+        if not role:
+            return Decision(RESULT_DENIED, REASON_ROLE_NOT_ASSIGNED, card, role)
 
         allowed_roles = STATE_ALLOWED_ROLES.get(self.store.system_state, ())
         if role not in allowed_roles:

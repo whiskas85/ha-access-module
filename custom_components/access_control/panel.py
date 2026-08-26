@@ -247,6 +247,11 @@ class AccessCommandView(HomeAssistantView):
                     body["card_id"], body.get("person", "")
                 )
 
+            elif action == "set_person_role":
+                await store.async_set_person_role(
+                    body["person"], body.get("role", "")
+                )
+
             elif action == "start_enrollment":
                 store.start_enrollment(ENROLLMENT_TIMEOUT_S, body.get("gate", ""))
 

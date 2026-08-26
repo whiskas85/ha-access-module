@@ -24,7 +24,8 @@ from .const import (
     RESULT_BLACKLIST,
     RESULT_DENIED,
     RESULT_LOCKOUT,
-    ROLE_ADULT,
+    ROLE_NONE,
+    ROLES,
     SIGNAL_STATE_CHANGED,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -122,15 +123,27 @@ class AccessStore:
         await self.async_save_and_notify()
 
     def role_of(self, person: str) -> str:
-        """Ruolo del titolare.
+        """Ruolo del titolare, stringa vuota se non è stato assegnato.
 
-        Un titolare non mappato è trattato come adulto: il ruolo bambino è
-        quello con i permessi più stretti e più specifici, e assegnarlo per
-        omissione trasformerebbe una dimenticanza di configurazione in un
-        diniego silenzioso durante la finestra scuola.
+        Non si torna un ruolo di comodo per chi non è configurato. Trattare un
+        titolare sconosciuto come adulto sarebbe fail-open: gli darebbe i
+        permessi più ampi proprio perché nessuno ha detto chi è, e il sistema
+        funzionerebbe senza far notare che manca una decisione. Senza ruolo la
+        tessera non apre, e il registro dice esattamente perché.
         """
         roles = self.settings.get("person_roles") or {}
-        return roles.get(person) or ROLE_ADULT
+        return roles.get(person) or ROLE_NONE
+
+    async def async_set_person_role(self, person: str, role: str) -> None:
+        if role and role not in ROLES:
+            raise ValueError(f"Ruolo non valido: {role}")
+        roles = dict(self.settings.get("person_roles") or {})
+        if role:
+            roles[person] = role
+        else:
+            roles.pop(person, None)
+        self.settings["person_roles"] = roles
+        await self.async_save_and_notify()
 
     # ── registro tessere ───────────────────────────────────────────────────
 

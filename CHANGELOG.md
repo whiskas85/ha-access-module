@@ -8,6 +8,41 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Tutti i titolari risultavano «adulto», e non era solo un'etichetta
+  sbagliata.** Chi non era stato configurato riceveva il ruolo adulto per
+  default, cioè i permessi **più ampi** proprio perché nessuno aveva detto chi
+  fosse: fail-open su una decisione di sicurezza, e per giunta invisibile,
+  perché tutto continuava a funzionare. Ora un titolare senza ruolo non è un
+  adulto — è una decisione che manca: le sue tessere non aprono, il registro
+  scrive `titolare_senza_ruolo_assegnato`, e il pannello lo segnala sulla
+  scheda della persona
+  - Il ruolo si assegna dalla scheda della persona, dove si vede a chi lo si
+    sta dando. La sezione doppia nelle Impostazioni è stata tolta: erano due
+    posti dove sbagliare, e il salvataggio delle impostazioni avrebbe finito
+    per azzerare i ruoli scritti dall'altra
+- **Il trascinamento partiva da qualunque punto della riga.** Bastava afferrare
+  una cella per spostare una tessera mentre si cercava di premere un pulsante.
+  Ora la riga diventa trascinabile solo mentre si tiene premuta la maniglia
+
+### Aggiunto
+
+- **Il pannello funziona su telefono e tablet, non solo su desktop.**
+  - Il problema vero non era il CSS: **il trascinamento HTML5 non emette
+    eventi sotto un dito**, quindi abbinare una tessera a una persona era
+    semplicemente impossibile da telefono — cioè proprio dove questa pagina si
+    usa, in piedi davanti alla porta. La maniglia è diventata un pulsante che
+    apre l'elenco dei titolari; il trascinamento resta una scorciatoia per chi
+    ha un mouse
+  - Sotto gli 780 px le tabelle non si comprimono, si **impilano**: ogni riga
+    diventa una scheda e l'intestazione di colonna torna come etichetta davanti
+    al valore. Sette colonne su 375 px sarebbero illeggibili a qualunque corpo
+  - Aree toccabili da 44 px, schede di navigazione che scorrono invece di
+    andare a capo, campi a piena larghezza
+  - Verificato a 375, 768 e 1280 px: nessuno scorrimento orizzontale della
+    pagina, nessun pulsante sotto i 40 px sul formato mobile
+
 ## [0.3.0] - 2026-08-26
 
 ### Aggiunto

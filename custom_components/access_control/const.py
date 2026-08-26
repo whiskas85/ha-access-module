@@ -40,8 +40,16 @@ STATE_OCCUPIED: Final = "casa_occupata"
 SYSTEM_STATES: Final = (STATE_SLEEP, STATE_SCHOOL, STATE_ADULT_RETURN, STATE_OCCUPIED)
 
 # Ruolo del titolare della card.
+#
+# Un titolare senza ruolo assegnato NON è un adulto: è un titolare senza
+# ruolo, e non compare in nessuna riga di STATE_ALLOWED_ROLES, quindi non apre
+# da nessuna parte. Il default opposto — trattarlo come adulto — sarebbe
+# fail-open su una decisione di sicurezza: una persona mai configurata si
+# ritroverebbe i permessi più ampi invece dei più stretti, e nessuno se ne
+# accorgerebbe perché tutto funzionerebbe.
 ROLE_CHILD: Final = "bambino"
 ROLE_ADULT: Final = "adulto"
+ROLE_NONE: Final = ""
 ROLES: Final = (ROLE_CHILD, ROLE_ADULT)
 
 # Chi può entrare in quale stato. Unica fonte della matrice §5.
@@ -137,6 +145,7 @@ REASON_UNKNOWN_CARD: Final = "card_non_censita"
 REASON_CARD_DISABLED: Final = "card_disabilitata"
 REASON_CARD_BLACKLISTED: Final = "card_in_blacklist"
 REASON_ROLE_NOT_ALLOWED: Final = "titolare_non_ammesso_in_questo_stato"
+REASON_ROLE_NOT_ASSIGNED: Final = "titolare_senza_ruolo_assegnato"
 REASON_WEAK_ON_GATE: Final = "credenziale_debole_su_varco_non_consentito"
 REASON_NO_PERSON: Final = "card_senza_titolare"
 REASON_RATE_LIMIT: Final = "rate_limit_superato"

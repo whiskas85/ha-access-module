@@ -301,11 +301,18 @@ class AccessControlPanel extends HTMLElement {
          </div>`;
 
     // ── gruppi: prima le orfane, poi un gruppo per titolare ─────────────
+    const persone = d.persone || [];
     const orfane = d.tessere.filter((c) => !c.person);
-    const gruppi = [this._gruppoOrfane(orfane)];
+    const gruppi = [this._gruppoOrfane(orfane, persone)];
 
-    for (const p of d.persone || []) {
-      gruppi.push(this._gruppoPersona(p, d.tessere.filter((c) => c.person === p.entity_id)));
+    for (const p of persone) {
+      gruppi.push(
+        this._gruppoPersona(
+          p,
+          d.tessere.filter((c) => c.person === p.entity_id),
+          persone,
+        ),
+      );
     }
 
     return `
@@ -336,7 +343,7 @@ class AccessControlPanel extends HTMLElement {
       </section>`;
   }
 
-  _gruppoOrfane(tessere) {
+  _gruppoOrfane(tessere, persone) {
     const vuoto = tessere.length === 0;
     return `
       <section class="card gruppo ${vuoto ? "spento" : "orfane"}" data-drop="">
@@ -352,11 +359,11 @@ class AccessControlPanel extends HTMLElement {
           </div>
           <span class="conteggio">${tessere.length}</span>
         </header>
-        ${vuoto ? "" : this._tabellaTessere(tessere)}
+        ${vuoto ? "" : this._tabellaTessere(tessere, persone)}
       </section>`;
   }
 
-  _gruppoPersona(p, tessere) {
+  _gruppoPersona(p, tessere, persone) {
     const avatar = p.foto
       ? `<img class="avatar" src="${esc(p.foto)}" alt="" />`
       : `<div class="avatar avatar-iniziali">${esc(
@@ -377,29 +384,62 @@ class AccessControlPanel extends HTMLElement {
         : `${tessere.length} ${tessere.length === 1 ? "tessera" : "tessere"}` +
           (attive < tessere.length ? ` · ${attive} attive` : "");
 
+    // Il ruolo si sceglie qui, dove si vede a chi lo si sta dando. Senza
+    // ruolo le tessere di questa persona non aprono: è una decisione che
+    // manca, non un valore da indovinare.
+    const ruolo = p.ruolo
+      ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>`
+      : `<span class="tag ruolo-mancante">${icona("alert")} ruolo da assegnare</span>`;
+
+    const sceltaRuolo = `
+      <div class="ruoli">
+        ${["bambino", "adulto"]
+          .map(
+            (r) =>
+              `<button class="mini ${p.ruolo === r ? "ok" : ""}"
+                 data-ruolo="${esc(p.entity_id)}|${r}">${r}</button>`,
+          )
+          .join("")}
+        ${
+          p.ruolo
+            ? `<button class="mini" data-ruolo="${esc(p.entity_id)}|">togli</button>`
+            : ""
+        }
+      </div>`;
+
     return `
-      <section class="card gruppo" data-drop="${esc(p.entity_id)}">
+      <section class="card gruppo ${p.ruolo ? "" : "senza-ruolo"}"
+               data-drop="${esc(p.entity_id)}">
         <header class="titolare">
           ${avatar}
           <div class="chi">
             <b>${esc(p.nome)}</b>
             <span class="sotto">
-              <span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>
+              ${ruolo}
               <span class="punto ${p.stato === "home" ? "acceso" : ""}"></span>${esc(dove)}
               · ${esc(dettaglio)}
             </span>
           </div>
           <span class="conteggio">${tessere.length}</span>
         </header>
+        ${sceltaRuolo}
+        ${
+          p.ruolo
+            ? ""
+            : `<p class="nota avviso-blocco">${icona("alert")}
+                 Finché non ha un ruolo, le sue tessere <b>non aprono nulla</b>.
+                 Non viene trattata come adulto per comodità: sarebbe darle i
+                 permessi più ampi proprio perché nessuno ha detto chi è.</p>`
+        }
         ${
           tessere.length
-            ? this._tabellaTessere(tessere)
+            ? this._tabellaTessere(tessere, persone)
             : `<p class="nota vuoto-gruppo">Trascina qui una tessera per abbinargliela.</p>`
         }
       </section>`;
   }
 
-  _tabellaTessere(tessere) {
+  _tabellaTessere(tessere, persone) {
     const azioni = (c) => {
       const b = [];
       if (c.state !== "attiva")
@@ -416,36 +456,72 @@ class AccessControlPanel extends HTMLElement {
       return b.join("");
     };
 
+    // Il trascinamento HTML5 non esiste su touch: `dragstart` non viene mai
+    // emesso da un dito. Senza un secondo percorso, abbinare una tessera a
+    // una persona sarebbe impossibile da telefono — cioè proprio dove questa
+    // pagina si usa, in piedi davanti alla porta. Quindi la maniglia è un
+    // pulsante che apre l'elenco dei titolari, e il trascinamento resta una
+    // scorciatoia in più per chi ha un mouse.
+    const scelta = (c) => {
+      if (this._assegna !== c.id) return "";
+      const voci = [
+        `<button class="mini" data-assegna="${esc(c.id)}|">Senza titolare</button>`,
+        ...persone.map(
+          (p) =>
+            `<button class="mini ${p.entity_id === c.person ? "ok" : ""}"
+               data-assegna="${esc(c.id)}|${esc(p.entity_id)}">${esc(p.nome)}</button>`,
+        ),
+      ].join("");
+      return `
+        <tr class="riga-assegna">
+          <td colspan="6">
+            <div class="assegna">
+              <span class="nota">Assegna <b>${esc(c.name)}</b> a:</span>
+              <div class="azioni">${voci}</div>
+              <button class="mini" data-assegna-chiudi="1">${icona("close")}Chiudi</button>
+            </div>
+          </td>
+        </tr>`;
+    };
+
     const righe = tessere
       .map(
         (c) => `
-      <tr class="stato-${esc(c.state)}" draggable="true" data-card="${esc(c.id)}">
-        <td class="maniglia" title="Trascina su una persona">${icona("drag")}</td>
-        <td>
+      <tr class="stato-${esc(c.state)}" data-card="${esc(c.id)}">
+        <td class="maniglia" data-etichetta="">
+          <button class="tocca-maniglia" data-scegli="${esc(c.id)}"
+                  title="Assegna a una persona" aria-label="Assegna a una persona">
+            ${icona("drag")}
+          </button>
+        </td>
+        <td data-etichetta="Tessera">
           <input class="nome-tessera" data-rename="${esc(c.id)}"
                  value="${esc(c.name)}" placeholder="dai un nome a questa tessera"
                  title="Invio per salvare" />
           <div class="uid">${esc(c.uid)}</div>
         </td>
-        <td>
+        <td data-etichetta="Sicurezza">
           <span class="pill ${c.sicurezza === "forte" ? "forte" : "debole"}">${esc(c.sicurezza)}</span>
           <div class="uid">${esc(c.tecnologia_label)}</div>
         </td>
-        <td><span class="pill s-${esc(c.state)}">${esc(c.state)}</span></td>
-        <td>${quando(c.last_used)}<div class="uid">${c.uses} usi</div></td>
-        <td><div class="azioni">${azioni(c)}</div></td>
-      </tr>`,
+        <td data-etichetta="Stato"><span class="pill s-${esc(c.state)}">${esc(c.state)}</span></td>
+        <td data-etichetta="Ultimo uso">${quando(c.last_used)}<div class="uid">${c.uses} usi</div></td>
+        <td data-etichetta="Azioni"><div class="azioni">${azioni(c)}</div></td>
+      </tr>
+      ${scelta(c)}`,
       )
       .join("");
 
     return `
-      <table>
-        <thead><tr>
-          <th></th><th>Tessera</th><th>Sicurezza</th>
-          <th>Stato</th><th>Ultimo uso</th><th>Azioni</th>
-        </tr></thead>
-        <tbody>${righe}</tbody>
-      </table>`;
+      <div class="tabella">
+        <table>
+          <thead><tr>
+            <th></th><th>Tessera</th><th>Sicurezza</th>
+            <th>Stato</th><th>Ultimo uso</th><th>Azioni</th>
+          </tr></thead>
+          <tbody>${righe}</tbody>
+        </table>
+      </div>`;
   }
 
   // ── registro ─────────────────────────────────────────────────────────
@@ -456,13 +532,13 @@ class AccessControlPanel extends HTMLElement {
           .map(
             (r) => `
         <tr class="esito-${esc(r.esito)}">
-          <td>${quando(r.timestamp)}</td>
-          <td><span class="pill e-${esc(r.esito)}">${esc(ESITO_ETICHETTA[r.esito] || r.esito)}</span></td>
-          <td>${esc(r.card_nome || "sconosciuta")}<div class="uid">${esc(r.uid)}</div></td>
-          <td>${esc(r.person || "—")}</td>
-          <td>${esc(STATO_ETICHETTA[r.stato_sistema] || r.stato_sistema)}</td>
-          <td>${esc(r.varco)}</td>
-          <td class="motivo-cella">${esc(r.motivo || "")}</td>
+          <td data-etichetta="Quando">${quando(r.timestamp)}</td>
+          <td data-etichetta="Esito"><span class="pill e-${esc(r.esito)}">${esc(ESITO_ETICHETTA[r.esito] || r.esito)}</span></td>
+          <td data-etichetta="Tessera">${esc(r.card_nome || "sconosciuta")}<div class="uid">${esc(r.uid)}</div></td>
+          <td data-etichetta="Titolare">${esc(r.person || "—")}</td>
+          <td data-etichetta="Stato">${esc(STATO_ETICHETTA[r.stato_sistema] || r.stato_sistema)}</td>
+          <td data-etichetta="Varco">${esc(r.varco)}</td>
+          <td data-etichetta="Motivo" class="motivo-cella">${esc(r.motivo || "")}</td>
         </tr>`,
           )
           .join("")
@@ -473,13 +549,15 @@ class AccessControlPanel extends HTMLElement {
         <h2>Registro accessi</h2>
         <p class="nota">Conservato dall'integration, non dal recorder: resta
           consultabile anche oltre la finestra di storico di Home Assistant.</p>
-        <table>
-          <thead><tr>
-            <th>Quando</th><th>Esito</th><th>Tessera</th><th>Titolare</th>
-            <th>Stato</th><th>Varco</th><th>Motivo</th>
-          </tr></thead>
-          <tbody>${righe}</tbody>
-        </table>
+        <div class="tabella">
+          <table>
+            <thead><tr>
+              <th>Quando</th><th>Esito</th><th>Tessera</th><th>Titolare</th>
+              <th>Stato</th><th>Varco</th><th>Motivo</th>
+            </tr></thead>
+            <tbody>${righe}</tbody>
+          </table>
+        </div>
         <button class="danger" data-act="clear-log">Svuota registro</button>
       </section>`;
   }
@@ -602,27 +680,6 @@ class AccessControlPanel extends HTMLElement {
       </section>
 
       <section class="card">
-        <h2>Ruoli dei titolari</h2>
-        <p class="nota">Il ruolo appartiene alla persona, non alla tessera:
-          due tessere dello stesso titolare non possono avere autorizzazioni
-          diverse per svista.</p>
-        ${(s.person_entities || [])
-          .map(
-            (p) => `
-          <label>${esc(p)}
-            <select data-ruolo="${esc(p)}">
-              ${d.opzioni.ruoli
-                .map(
-                  (r) =>
-                    `<option value="${esc(r)}" ${(s.person_roles || {})[p] === r ? "selected" : ""}>${esc(r)}</option>`,
-                )
-                .join("")}
-            </select></label>`,
-          )
-          .join("")}
-      </section>
-
-      <section class="card">
         <h2>Varchi e hook</h2>
         <p class="nota">Il modulo non apre: decide, risponde al lettore e
           chiama questi script. Senza script di apertura configurato nega e lo
@@ -721,17 +778,75 @@ class AccessControlPanel extends HTMLElement {
       el.addEventListener("dragstart", (ev) => ev.preventDefault());
     });
 
+    // ── assegnazione a tocchi (l'alternativa al trascinamento) ─────────
+    r.querySelectorAll("[data-scegli]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const id = el.dataset.scegli;
+        this._assegna = this._assegna === id ? null : id;
+        this._render();
+      }),
+    );
+
+    r.querySelectorAll("[data-assegna]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const [card_id, person] = el.dataset.assegna.split("|");
+        this._assegna = null;
+        this._comando({ action: "assign_person", card_id, person: person || "" });
+      }),
+    );
+
+    r.querySelector("[data-assegna-chiudi]")?.addEventListener("click", () => {
+      this._assegna = null;
+      this._render();
+    });
+
+    r.querySelectorAll("[data-ruolo]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const [person, role] = el.dataset.ruolo.split("|");
+        this._comando({ action: "set_person_role", person, role: role || "" });
+      }),
+    );
+
     // ── trascinamento tessera → titolare ──────────────────────────────
+    // Il trascinamento parte SOLO dalla maniglia.
+    //
+    // `draggable` va sulla riga — è la riga che deve muoversi — ma se resta
+    // sempre attivo si trascina afferrando qualunque punto, comprese le celle
+    // dove si legge e si clicca: si finisce per spostare tessere per sbaglio
+    // mentre si cerca di premere un pulsante. Quindi la riga diventa
+    // trascinabile solo mentre si tiene premuta la maniglia, e torna ferma
+    // appena si lascia.
     r.querySelectorAll("[data-card]").forEach((riga) => {
+      riga.draggable = false;
+      const maniglia = riga.querySelector(".tocca-maniglia");
+
+      const arma = () => {
+        riga.draggable = true;
+      };
+      const disarma = () => {
+        riga.draggable = false;
+      };
+      maniglia?.addEventListener("pointerdown", arma);
+      maniglia?.addEventListener("pointerup", disarma);
+      maniglia?.addEventListener("pointercancel", disarma);
+
       riga.addEventListener("dragstart", (ev) => {
+        // Se la riga è trascinabile senza che la maniglia sia premuta,
+        // l'origine non è quella prevista: si annulla invece di indovinare.
+        if (!riga.draggable) {
+          ev.preventDefault();
+          return;
+        }
         this._dragging = riga.dataset.card;
         riga.classList.add("in-volo");
         ev.dataTransfer.effectAllowed = "move";
         // Firefox non avvia il trascinamento senza payload impostato.
         ev.dataTransfer.setData("text/plain", riga.dataset.card);
       });
+
       riga.addEventListener("dragend", () => {
         this._dragging = null;
+        disarma();
         riga.classList.remove("in-volo");
         r.querySelectorAll("[data-drop]").forEach((t) =>
           t.classList.remove("sopra"),
@@ -793,18 +908,15 @@ class AccessControlPanel extends HTMLElement {
       const giorni = [...r.querySelectorAll("[data-giorno]")]
         .filter((c) => c.checked)
         .map((c) => Number(c.dataset.giorno));
-      const ruoli = {};
-      r.querySelectorAll("[data-ruolo]").forEach((el) => {
-        ruoli[el.dataset.ruolo] = el.value;
-      });
-
       this._comando({
         action: "set_settings",
         settings: {
           school_start: val("set-school_start"),
           school_end: val("set-school_end"),
           school_days: giorni,
-          person_roles: ruoli,
+          // person_roles non si tocca da qui: lo scrive la scheda della
+          // persona. Mandarlo da questa form lo azzererebbe, perche' qui
+          // i selettori dei ruoli non esistono piu'.
           sleep_delay_min: num("set-sleep_delay_min"),
           door_ajar_min: num("set-door_ajar_min"),
           rate_limit_window_s: num("set-rate_limit_window_s"),
@@ -957,14 +1069,111 @@ class AccessControlPanel extends HTMLElement {
       .conteggio { font-size:1.5rem; font-weight:700; color:var(--secondary-text-color); flex:0 0 auto; }
       .vuoto-gruppo { margin:0; font-style:italic; }
 
-      tr[draggable="true"] { cursor:grab; }
       tr.in-volo { opacity:.4; }
       .maniglia { color:var(--secondary-text-color); cursor:grab; user-select:none; width:28px; }
+
+      /* ── assegnazione a tocchi ───────────────────────────────────────── */
+      .tocca-maniglia { background:none; border:none; padding:8px; margin:-8px;
+                        color:var(--secondary-text-color); cursor:grab;
+                        min-width:44px; min-height:44px; justify-content:center; }
+      .riga-assegna td { background:color-mix(in srgb, var(--primary-color) 8%, transparent); }
+      .assegna { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+      .assegna .nota { margin:0; }
+
+      /* ── ruolo del titolare ──────────────────────────────────────────── */
+      .ruoli { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px; }
+      .tag.ruolo-mancante { background:rgba(255,167,38,.25); color:#e08600;
+                            display:inline-flex; align-items:center; gap:5px; }
+      .tag.ruolo-mancante .ico { width:14px; height:14px; }
+      .gruppo.senza-ruolo { border-color:rgba(255,167,38,.5); }
+      .avviso-blocco { display:flex; gap:8px; align-items:flex-start;
+                       background:rgba(255,167,38,.12); border-radius:8px; padding:10px 12px; }
+      .avviso-blocco .ico { flex:0 0 auto; color:#e08600; margin-top:2px; }
 
       /* ── legenda degli stati ─────────────────────────────────────────── */
       .spiega { list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:10px; }
       .spiega li { display:flex; align-items:flex-start; gap:10px; font-size:.95rem; line-height:1.5; }
       .spiega .ico { margin-top:2px; color:var(--secondary-text-color); }
+
+      /* ═══════════════════════════════════════════════════════════════════
+         TABLET E MOBILE
+
+         Le tabelle non si comprimono: sei colonne su 375 px sono illeggibili
+         a qualunque dimensione di carattere. Sotto i 780 px ogni riga diventa
+         una scheda, e l'intestazione di colonna torna come etichetta davanti
+         al valore (l'attributo data-etichetta sul <td>). Cosi' non si perde
+         nessun dato e non si scrolla in orizzontale.
+         ═══════════════════════════════════════════════════════════════════ */
+
+      /* Sopravvivenza minima: qualunque tabella troppo larga scorre dentro il
+         suo contenitore invece di allargare la pagina. */
+      .tabella { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+      @media (max-width: 1024px) {
+        .wrap { padding:14px; }
+        .griglia { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
+      }
+
+      @media (max-width: 780px) {
+        .wrap { padding:12px; }
+        h1 { font-size:1.45rem; width:100%; }
+        /* Le schede scorrono in orizzontale invece di andare a capo su piu'
+           righe, che farebbe saltare in basso il contenuto a ogni cambio. */
+        nav { width:100%; overflow-x:auto; flex-wrap:nowrap; padding-bottom:4px;
+              scrollbar-width:none; }
+        nav::-webkit-scrollbar { display:none; }
+        .tab { flex:0 0 auto; }
+
+        .card { padding:14px; }
+        .tabella { overflow-x:visible; }
+        table, thead, tbody, tr, td { display:block; width:100%; }
+        thead { display:none; }
+        tbody tr { border:1px solid var(--divider-color); border-radius:10px;
+                   padding:10px 12px; margin-bottom:10px; }
+        tbody tr:last-child td { border-bottom:none; }
+        td { border-bottom:1px solid var(--divider-color); padding:8px 0;
+             display:flex; gap:12px; align-items:flex-start; }
+        td:last-child { border-bottom:none; }
+        /* L'etichetta di colonna davanti al valore. Le celle senza etichetta
+           (la maniglia) non ne mostrano una vuota che sposterebbe tutto. */
+        td[data-etichetta]:not([data-etichetta=""])::before {
+          content:attr(data-etichetta);
+          flex:0 0 34%;
+          font-size:.75rem; text-transform:uppercase; letter-spacing:.4px;
+          color:var(--secondary-text-color); padding-top:3px;
+        }
+        td.maniglia { justify-content:flex-end; }
+        .nome-tessera { max-width:none; }
+        .azioni { flex:1; }
+        .mini { flex:1 1 auto; justify-content:center; }
+
+        /* Il trascinamento non esiste sotto un dito: la maniglia qui e' solo
+           il pulsante che apre l'elenco dei titolari. */
+        tr { cursor:default; }
+
+        .titolare { gap:11px; }
+        .avatar { width:40px; height:40px; }
+        .chi b { font-size:1.05rem; }
+        .conteggio { font-size:1.25rem; }
+        .attesa { gap:12px; }
+        .scelta-varco, .scelta-varco button { width:100%; }
+        .enroll-avvio .riga { flex-direction:column; align-items:stretch; }
+        button { min-height:44px; }
+        label { flex:1 1 100%; }
+      }
+
+      @media (max-width: 420px) {
+        .griglia { grid-template-columns:1fr 1fr; }
+        .mini span { display:none; }   /* restano le icone, gia' etichettate */
+        .mini { flex:1 1 auto; padding:10px; }
+        td[data-etichetta]:not([data-etichetta=""])::before { flex:0 0 42%; }
+      }
+
+      /* Su schermi con solo tocco il cursore "grab" e' una promessa che il
+         dispositivo non puo' mantenere. */
+      @media (hover: none) {
+        .maniglia, .tocca-maniglia { cursor:pointer; }
+      }
     `;
   }
 }
