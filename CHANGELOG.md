@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-26
+
 ### Aggiunto
 
 - **Il pannello dice quando la pagina che stai guardando è vecchia.** La
