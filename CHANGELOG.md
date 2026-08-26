@@ -8,6 +8,13 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Documentazione
+
+- README riscritto sul modello v0.8: due macchine a stati, finestre, azioni
+  per lettore, varchi, e la sezione sul perché il registro tag non si può più
+  inondare. Descriveva ancora hook e lockout, che non esistono più
+
+
 ## [0.8.0] - 2026-08-27
 
 ### Aggiunto

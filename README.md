@@ -4,7 +4,7 @@ Integration Home Assistant per il controllo accessi di casa: gestisce le
 credenziali, decide chi può entrare e quando, traccia tutto — e **non apre
 niente**.
 
-L'apertura la fanno gli script che configuri tu.
+L'apertura la fanno le azioni che configuri tu, su ogni lettore.
 
 [![Validate](https://github.com/whiskas85/ha-access-module/actions/workflows/validate.yml/badge.svg)](https://github.com/whiskas85/ha-access-module/actions/workflows/validate.yml)
 
@@ -12,21 +12,25 @@ L'apertura la fanno gli script che configuri tu.
 
 ## Il principio, in una riga
 
-> Il lettore esterno **legge**. Home Assistant **decide**. Gli script **aprono**.
+> Il tag **valida l'accesso**. Il lettore **decide l'azione**.
+>
+> Il lettore esterno legge, Home Assistant decide, le azioni configurate
+> aprono. Nessun relè di varco sul dispositivo esterno.
 
 Un attaccante che compromette completamente il dispositivo esterno ottiene la
 capacità di *dichiarare* «ho letto il codice X» — non di aprire.
 
 ```
-   lettore              MODULO                       attuazione
-   ───────              ──────                       ──────────
+   lettore              MODULO                        attuazione
+   ───────              ──────                        ──────────
    legge      →   identifica la tessera
-                  valuta stato + sicurezza
-                  + titolare + stato sistema
+   blip 25ms      finestra attiva? ruolo ammesso?
+                  sistema in allarme?
                   decide
-                  emette evento           →   pre-hook  (può vietare)
-                  risponde al lettore     →   script del varco
-                  traccia                 →   post-hook
+                  risponde al lettore      →   azioni del LETTORE
+                  traccia                      (editor di HA:
+                  emette evento                 apri varco, script,
+                                                servizio, condizioni…)
 ```
 
 ---
@@ -36,22 +40,43 @@ capacità di *dichiarare* «ho letto il codice X» — non di aprire.
 Un tag MIFARE Classic è **clonabile in trenta secondi**, e il PN532 letto via
 ESPHome fornisce **solo l'UID**, senza autenticazione.
 
-La sicurezza non viene dal tag: viene dalla **macchina a stati**. Le
-credenziali sono accettate solo negli stati in cui il sistema è armato, e ogni
-stato ammette un sottoinsieme diverso di titolari.
+La sicurezza non viene dal tag: viene dalle **finestre**. Le credenziali sono
+accettate solo quando una finestra le ammette, e ogni finestra dice quali ruoli
+può far entrare, quando, e — se vuoi — da quali lettori.
 
-| Stato | Come ci si entra | Chi è autorizzato |
+**Senza finestre non entra nessuno.** Una configurazione vuota è una casa
+chiusa, non una casa aperta.
+
+Un tag clonato fuori finestra non apre nulla.
+
+## Due macchine a stati
+
+Sono separate di proposito: tenerle insieme renderebbe impossibile distinguere
+«è notte» da «qualcuno sta provando le tessere», che sono la cosa più diversa
+che ci sia.
+
+| | Stati | Cosa la muove |
 |---|---|---|
-| `sleep` | default | nessuno |
-| `finestra_scuola` | giorno abilitato + orario in finestra | solo il bambino |
-| `rientro_adulto` | un adulto entra nella zona di avvicinamento | solo adulti |
-| `casa_occupata` | presenza rilevata in casa | tutti |
+| **Autorizzazione** | `chiuso` / `aperto` | finestre orarie, presenza |
+| **Sicurezza** | `normale` / `allarme` | letture rifiutate, tessere revocate, tamper |
 
-Sopra a questo, il **livello di sicurezza della tessera** restringe ancora:
-una credenziale debole vale solo sul varco pedonale, qualunque sia lo stato.
+Si apre solo quando **entrambe** dicono sì.
 
-Un tag clonato fuori finestra non apre nulla. **Non indebolire la macchina a
-stati per semplificare l'uso** — è ciò che regge l'intero modello.
+### L'allarme
+
+Dopo **N letture rifiutate di fila** (default 3), o se passa una tessera
+disabilitata o in blacklist, o se un lettore viene manomesso:
+
+- i lettori **smettono di leggere** — LED rosso fisso
+- si esce **solo con lo sblocco manuale**
+- l'allarme **sopravvive a un riavvio**: non si esce da un blocco di sicurezza
+  riavviando
+
+> **La via d'uscita.** Il blocco totale è una difesa contro chi cicla codici
+> con un Flipper, ma è anche un modo per lasciare fuori chi ha diritto di
+> entrare — e il bambino non ha il telefono. Per questo la notifica di allarme
+> porta con sé i pulsanti per **aprire un varco dal telefono senza sbloccare
+> l'impianto**: chi è alla porta entra, la difesa resta su.
 
 ---
 
@@ -64,8 +89,8 @@ stati per semplificare l'uso** — è ciò che regge l'intero modello.
 3. Installa **Controllo Accessi**, poi riavvia Home Assistant
 4. Impostazioni → Dispositivi e servizi → **Aggiungi integrazione** → Controllo Accessi
 
-Nel setup si chiede solo l'essenziale. Tessere, varchi, hook e soglie si
-gestiscono dal pannello **Accessi** che compare nella barra laterale.
+Nel setup si chiede solo l'essenziale. Tessere, lettori, varchi, finestre,
+notifiche e soglie si gestiscono dal pannello **Accessi** che compare nella barra laterale.
 
 ### Manuale
 
@@ -93,7 +118,7 @@ niente di visibile.
 
 Non si trascrive nessun UID.
 
-1. Pannello **Accessi** → scheda **Tessere** → **Abilita lettura tessera**
+1. Pannello **Accessi** → scheda **Tessere** → **Aggiungi tessera**
 2. Passa la tessera al lettore entro 60 secondi
 3. Viene censita da sola: UID e tipo di chip li ricava il modulo
 
@@ -144,50 +169,58 @@ data:
 
 ---
 
-## Gli hook
+## Le azioni
 
-Il modulo non apre. Chiama, in ordine:
+Il modulo non apre. Ogni **lettore** ha la sua sequenza di azioni, ed è
+**l'editor delle automazioni di Home Assistant** — non un formato inventato
+qui.
 
-| Fase | Obbligatorio | Se fallisce |
-|---|---|---|
-| **pre-hook** | no | l'apertura non procede (o procede, vedi sotto) |
-| **script del varco** | **sì** | esito `ko`, tracciato nel registro |
-| **post-hook** | no | solo log |
+La conseguenza è che `choose`, `if`, `delay`, `repeat` e i template funzionano
+perché non sono riscritti: sono quelli veri, eseguiti dall'helper `Script`. E
+quello che vedi nell'editor è letteralmente quello che viene eseguito, senza
+traduzione in mezzo che possa mentire.
 
-Tutti ricevono l'evento completo nella variabile `accesso`.
-
-Il pre-hook vieta l'apertura restituendo `allow: false`:
+Nelle azioni hai la variabile `accesso`:
 
 ```yaml
-sequence:
-  - if:
-      - condition: state
-        entity_id: cover.piscina
-        state: open
-    then:
-      - stop: "Piscina scoperta"
-        response_variable: esito
-variables:
-  esito:
-    allow: false
+- action: access_control.open_gate
+  data:
+    gate: porta
+- action: access_control.open_gate
+  data:
+    gate: cancelletto
+- action: notify.mobile_app_telefono
+  data:
+    message: "È entrato {{ accesso.person }}"
 ```
 
-**Fail-open sul pre-hook** (impostabile per varco): un pre-hook che va in
-errore si comporta come se non ci fosse, perché la decisione di base ha già
-superato tutta la policy. Fail-closed trasformerebbe un refuso in uno script in
-un bambino chiuso fuori.
+Lettori diversi fanno cose diverse: non è detto che il garage debba fare quello
+che fa l'ingresso.
 
-Se un varco non ha script di apertura configurato, il modulo **nega** e lo
-scrive nel registro. Non apre "di default".
+## I varchi
 
----
+Un varco è un'apertura fisica — porta, garage, cancelletto, cancello —
+definita **una volta** e riusabile da più lettori.
+
+| Campo | A cosa serve |
+|---|---|
+| Entità | `lock.portone`, `switch.cancelletto`, `cover.garage`… |
+| Servizio | vuoto = dedotto dal dominio |
+| Rispegni dopo | per gli switch impulsivi |
+
+Il servizio si deduce perché è sempre lo stesso: da `lock.` si apre con `open`
+(o `unlock` se la serratura non espone lo scrocco), da `switch.` con `turn_on`,
+da `cover.` con `open_cover`. Il campo serve solo quando l'ovvio non va bene.
+
+Il **rispegni dopo** esiste perché un relè di cancello lasciato acceso è un
+cancello che resta aperto.
 
 ## Gli eventi
 
 ```yaml
 event_type: access_control_event
 event_data:
-  esito: granted | denied | blacklist | lockout
+  esito: granted | denied | blacklist | alarm | enrolled
   motivo: sistema_in_sleep
   uid: "04-A1-B2-C3"
   card_nome: portachiavi scuola
@@ -226,38 +259,20 @@ gli altri, e l'allarme ad alta priorità arriva sul telefono.
 
 ---
 
-## Lockout dei lettori
-
-Dopo N letture rifiutate consecutive, due comportamenti possibili:
-
-| Modalità | Cosa blocca | Default |
-|---|---|---|
-| `segnala` | nulla — notifica, evento, contatore | ✅ |
-| `blocca` | ogni lettura, comprese quelle valide | |
-
-Il default è `segnala`, ed è una scelta di sicurezza. Un lockout che blocca
-tutto è **banalmente armabile contro chi deve entrare**: bastano N letture di
-una tessera qualsiasi. E in cambio difende da un brute-force dell'UID che a
-tre letture ogni dieci secondi su quattro miliardi di combinazioni
-richiederebbe comunque secoli. Blocca l'unica persona che deve entrare e non
-ferma nessuno che conti davvero.
-
-Chi vuole `blocca` lo imposta sapendo che serve un fallback fisico
-indipendente, o il bambino resta fuori.
-
----
 
 ## Entità esposte
 
 | Entità | Dice |
 |---|---|
 | `binary_sensor.*_sistema_armato` | accetterei una credenziale in questo momento? |
+| `binary_sensor.*_allarme` | sistema in allarme, col motivo negli attributi |
+| `binary_sensor.*_finestra_attiva` | c'è una finestra aperta adesso |
+| `sensor.*_stato` | `chiuso` / `aperto`, coi ruoli ammessi negli attributi |
 | `sensor.*_motivo_stato` | perché sono in questo stato |
 | `sensor.*_stato_porta` | `chiusa` / `aperta` / `in_apertura` / `incoerente` / `errore` |
 | `binary_sensor.*_porta_socchiusa` | porta aperta da troppo tempo |
-| `binary_sensor.*_lettori_bloccati` | lockout in corso |
 | `sensor.*_ultimo_accesso` | quando e con quale tessera |
-| `sensor.*_tentativi_negati_oggi` | con i fallimenti consecutivi negli attributi |
+| `sensor.*_tentativi_negati_oggi` | coi fallimenti consecutivi negli attributi |
 | `switch.*_master_accessi` | abilitazione generale |
 
 `sensor.*_stato_porta` incrocia **due fonti indipendenti** — la serratura e il
@@ -273,19 +288,50 @@ ma non mandata in sicurezza, cioè la condizione normale di casa abitata.
 
 | Servizio | Cosa fa |
 |---|---|
-| `access_control.start_enrollment` | apre la finestra di censimento |
+| `access_control.open_gate` | apre un varco — è l'azione da usare nei lettori |
+| `access_control.start_enrollment` | apre il censimento di una tessera |
+| `access_control.start_device_learning` | riconosce un lettore, scartando la tessera |
 | `access_control.scan` | valuta una lettura senza andare al varco |
 | `access_control.enroll_card` | censisce a mano, da un UID già noto |
 | `access_control.set_card_state` | attiva / disabilita / blacklist |
 | `access_control.remove_card` | elimina dal registro |
-| `access_control.unlock_readers` | azzera il lockout |
+| `access_control.clear_alarm` | sblocca l'allarme e riaccende i lettori |
+| `access_control.report_tamper` | segnala una manomissione (dal microswitch) |
+| `access_control.set_reading_enabled` | accende o spegne la lettura |
 | `access_control.clear_log` | svuota il registro accessi |
 
 ---
 
+## Perché il registro tag non si può inondare
+
+Il firmware **non chiama** `homeassistant.tag_scanned`. Quella chiamata fa
+creare a Home Assistant un'entità `tag.*` per **ogni UID mai visto**: chi
+arriva con un Flipper e cicla centomila codici crea centomila entità, il
+registro tag diventa inservibile e il database si gonfia — e il danno resta
+anche dopo che l'attaccante se n'è andato.
+
+Il nodo manda un evento suo, che non crea niente. È il modulo, **dopo** aver
+validato la tessera, a farla comparire nel registro tag. Un UID sconosciuto
+resta un numero in un contatore.
+
+E in allarme i lettori **smettono proprio di leggere**: l'inondazione si ferma
+alla radice, invece di essere rifiutata dopo essere già arrivata.
+
 ## Il nodo lettore
 
-`esphome/rfid-ingresso.yaml` — ESP32 con PN532 su I²C a 50 kHz e buzzer attivo.
+`esphome/rfid-ingresso.yaml` — ESP32 con PN532 su I²C a 50 kHz.
+
+| GPIO | Uso |
+|---|---|
+| 21 / 22 | I²C — PN532 |
+| 18 | buzzer attivo |
+| 25 / 26 / 27 | LED RGB di stato |
+| 32 | tamper (predisposto, da cablare) |
+
+Un **blip di 25 ms** appena legge, prima di tutto: dice «ti ho letto» mentre la
+decisione è ancora in viaggio. L'**interruttore di lettura** è quello che
+l'allarme spegne, e riparte acceso dopo un blackout — un lettore muto dopo un
+calo di tensione è un guasto silenzioso.
 
 Legge, non decide, non attua: **nessun GPIO di quel nodo è collegato a un relè
 di un varco, e non deve esserlo mai.** Le chiavi crittografiche future stanno
@@ -313,7 +359,7 @@ Home Assistant o dall'alimentazione del lettore.
 ## Documentazione
 
 - [`SPEC.md`](SPEC.md) — specifica di riferimento, con addendum sugli scostamenti
-- [`docs/DESIGN-v2.md`](docs/DESIGN-v2.md) — modello dati, hook, lockout
+- [`docs/DESIGN-v2.md`](docs/DESIGN-v2.md) — modello dati (storico, pre-v0.8)
 - [`docs/ENTITIES.md`](docs/ENTITIES.md) — mappa entità e limiti dell'impianto
 - [`CHANGELOG.md`](CHANGELOG.md)
 
