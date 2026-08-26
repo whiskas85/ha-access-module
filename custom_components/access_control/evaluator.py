@@ -96,11 +96,19 @@ class AccessEvaluator:
 
     # ── ingresso principale ────────────────────────────────────────────────
 
-    async def async_handle_scan(self, raw_uid: str, gate_id: str = "") -> Decision:
+    async def async_handle_scan(
+        self, raw_uid: str, gate_id: str = "", device_id: str = ""
+    ) -> Decision:
         """Valuta una lettura e porta a termine tutto ciò che ne consegue."""
         uid = normalize_uid(raw_uid)
         gate_id = gate_id or next(iter(self.store.gates), "ingresso")
         gate = self.store.gate(gate_id) or {}
+
+        # Chi ha letto è un lettore: si annota sempre, anche quando la lettura
+        # viene poi negata. Serve a popolare l'elenco dei lettori da cui si
+        # scelgono i varchi, e non dipende dall'esito.
+        if device_id:
+            await self.store.async_note_reader(device_id)
 
         # In enrollment la lettura viene censita, non valutata. Si controlla
         # per primo: durante l'enrollment non ha senso negare una tessera
@@ -108,7 +116,7 @@ class AccessEvaluator:
         # Vale solo per il varco su cui il censimento è stato aperto: una
         # lettura da un altro lettore resta una lettura normale.
         if self.store.enrollment_accepts(gate_id):
-            return await self._async_enroll(uid, gate, gate_id)
+            return await self._async_enroll(uid, gate, gate_id, device_id)
 
         decision = self._decide(uid, gate_id)
 
@@ -149,7 +157,7 @@ class AccessEvaluator:
     # ── enrollment ─────────────────────────────────────────────────────────
 
     async def _async_enroll(
-        self, uid: str, gate: dict[str, Any], gate_id: str
+        self, uid: str, gate: dict[str, Any], gate_id: str, device_id: str = ""
     ) -> Decision:
         """Censisce la tessera appena letta.
 
@@ -159,6 +167,21 @@ class AccessEvaluator:
         durare il minimo indispensabile.
         """
         self.store.cancel_enrollment()
+
+        # Il censimento è anche il momento in cui il varco impara qual è il
+        # suo lettore: hai aperto la finestra su questo varco e hai passato la
+        # tessera a quel lettore, quindi l'associazione l'hai appena fatta tu
+        # con un gesto. Si scrive solo se il varco non ne aveva già uno — non
+        # si riscrive una configurazione esistente di nascosto.
+        legato = False
+        if device_id and not gate.get("reader_device_id"):
+            await self.store.async_bind_reader(gate_id, device_id)
+            legato = True
+            _LOGGER.info(
+                "Varco %s associato al lettore %s durante il censimento",
+                gate_id,
+                device_id,
+            )
 
         esistente = self.store.card_by_uid(uid)
         if esistente is not None:
@@ -203,10 +226,15 @@ class AccessEvaluator:
         self.hass.bus.async_fire(EVENT_ACCESS, event.to_dict())
         await self.store.async_append_log(event)
 
+        coda = (
+            f" Varco «{gate.get('name', gate_id)}» associato al lettore."
+            if legato
+            else ""
+        )
         await self._async_send_notification(
             "🆕 Tessera censita",
             f"{card.label} — {motivo}. "
-            "Non apre nulla finché non le assegni un titolare.",
+            f"Non apre nulla finché non le assegni un titolare.{coda}",
         )
         return Decision(RESULT_ENROLLED, motivo, card)
 

@@ -52,6 +52,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(coordinator.async_start())
     entry.async_on_unload(_async_subscribe_tags(hass, store, evaluator))
 
+    # I tag esistono già come entità all'avvio dell'integration, quindi si
+    # può leggere subito chi ha letto in passato.
+    _seed_readers_from_tags(hass, store)
+
     await async_setup_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await async_setup_panel(hass)
@@ -80,10 +84,33 @@ def _async_subscribe_tags(
         uid = event.data.get("tag_id")
         if not uid:
             return
-        gate_id = _gate_for_device(store, event.data.get("device_id"))
-        await evaluator.async_handle_scan(uid, gate_id)
+        device_id = event.data.get("device_id") or ""
+        gate_id = _gate_for_device(store, device_id)
+
+        # Durante il censimento la lettura appartiene al varco su cui il
+        # censimento è aperto, qualunque cosa dica la mappatura. È il momento
+        # in cui il lettore ci si sta presentando: pretendere che sia già
+        # mappato significherebbe chiedere di configurare la cosa che stiamo
+        # per imparare, e la lettura finirebbe sul varco sbagliato.
+        if store.enrollment_active and store.enrollment_gate:
+            gate_id = store.enrollment_gate
+
+        await evaluator.async_handle_scan(uid, gate_id, device_id=device_id)
 
     return hass.bus.async_listen(EVENT_TAG_SCANNED, _handle)
+
+
+@callback
+def _seed_readers_from_tags(hass: HomeAssistant, store: AccessStore) -> None:
+    """Riconosce i lettori già usati in passato, senza aspettare una lettura."""
+    coppie = [
+        (
+            state.attributes.get("last_scanned_by_device_id"),
+            state.state if state.state not in ("unknown", "unavailable") else None,
+        )
+        for state in hass.states.async_all("tag")
+    ]
+    store.seed_readers([c for c in coppie if c[0]])
 
 
 def _gate_for_device(store: AccessStore, device_id: str | None) -> str:

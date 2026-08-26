@@ -8,6 +8,30 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **I lettori si riconoscono da soli.** Prima il lettore di un varco si
+  indicava incollando a mano un `device_id` — una stringa esadecimale da
+  pescare dall'URL della pagina del dispositivo. Ora è un elenco a tendina.
+  - Non esiste un modo per chiedere a Home Assistant quali dispositivi abbiano
+    un lettore NFC: né l'integrazione né il modello lo dichiarano, e dedurlo
+    dal nome sarebbe indovinare. Ma **chi legge è un lettore**: ogni
+    `tag_scanned` porta con sé il `device_id` di chi ha letto, e da lì
+    l'elenco si popola da solo
+  - All'avvio l'elenco non parte vuoto: i tag già esistenti conservano
+    `last_scanned_by_device_id`, cioè chi ha letto in passato
+  - Un lettore poi rimosso da Home Assistant resta in elenco ma viene marcato,
+    così un varco non resta legato a un fantasma senza dirlo
+- **Il censimento associa il varco al suo lettore.** Apri il censimento su un
+  varco e passi una tessera a un lettore: l'associazione l'hai appena fatta tu
+  con un gesto, e il modulo la registra. Si scrive **solo** se il varco non
+  aveva già un lettore — una configurazione esistente non si riscrive di
+  nascosto
+  - Durante il censimento la lettura appartiene al varco su cui è aperto,
+    qualunque cosa dica la mappatura: pretendere che il lettore fosse già
+    mappato significherebbe chiedere di configurare proprio la cosa che si sta
+    per imparare
+
 ## [0.4.1] - 2026-08-26
 
 ### Modificato

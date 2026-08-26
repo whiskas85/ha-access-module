@@ -101,6 +101,40 @@ def _persone(hass: HomeAssistant, store) -> list[dict[str, Any]]:
     return sorted(persone, key=lambda p: p["nome"].lower())
 
 
+def _lettori(hass: HomeAssistant, store) -> list[dict[str, Any]]:
+    """I dispositivi che hanno letto almeno una tessera.
+
+    Non esiste un modo per chiedere a Home Assistant "quali device hanno un
+    lettore NFC": né l'integrazione né il modello lo dichiarano, e dedurlo dal
+    nome sarebbe indovinare. Ma un dispositivo che ha emesso `tag_scanned` ha
+    letto qualcosa, e questo lo sappiamo per averlo visto. È da qui che si
+    scelgono i lettori dei varchi, invece di far incollare a mano un device_id.
+    """
+    registry = dr.async_get(hass)
+    lettori = []
+    for device_id, info in store.readers.items():
+        device = registry.async_get(device_id)
+        legato_a = [
+            g["id"]
+            for g in store.gates.values()
+            if g.get("reader_device_id") == device_id
+        ]
+        lettori.append(
+            {
+                "device_id": device_id,
+                "nome": (device.name_by_user or device.name) if device else "",
+                "modello": (device.model or "") if device else "",
+                # Un lettore rimosso da Home Assistant resta nell'elenco ma va
+                # detto: altrimenti un varco resterebbe legato a un fantasma.
+                "assente": device is None,
+                "letture": info.get("letture", 0),
+                "ultima": info.get("ultima"),
+                "varchi": legato_a,
+            }
+        )
+    return sorted(lettori, key=lambda x: (not x["varchi"], x["nome"] or x["device_id"]))
+
+
 def _varchi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
     """I varchi, con il nome del lettore a cui sono legati.
 
@@ -167,6 +201,7 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             )
         ],
         "varchi": _varchi(hass, store),
+        "lettori": _lettori(hass, store),
         "log": [e.to_dict() for e in store.log[:200]],
         "opzioni": {
             "stati_tessera": list(CARD_STATES),

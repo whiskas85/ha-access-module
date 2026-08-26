@@ -292,9 +292,11 @@ class AccessControlPanel extends HTMLElement {
                   </button>
                   <span class="uid">${
                     g.reader_device_mancante
-                      ? (piuVarchi
-                          ? `<span class="avviso">${icona("alert")} nessun lettore associato: le letture finiscono sul primo varco</span>`
-                          : "lettore non associato — con un varco solo va bene lo stesso")
+                      ? `<span class="avviso">${icona("alert")} lettore ancora da riconoscere${
+                          piuVarchi
+                            ? ": apri il censimento qui e passa una tessera"
+                            : " — verrà associato al primo censimento"
+                        }</span>`
                       : `lettore: ${esc(g.reader_device_name || g.reader_device_id)}`
                   }</span>
                 </div>`,
@@ -623,8 +625,32 @@ class AccessControlPanel extends HTMLElement {
         <label>Servizio di risposta al lettore
           <input data-g="reader_service" value="${esc(g.reader_service || "")}"
                  placeholder="esphome.rfid_ingresso_esito_accesso" /></label>
-        <label>Device id del lettore
-          <input data-g="reader_device_id" value="${esc(g.reader_device_id || "")}" /></label>
+        <label>Lettore di questo varco
+          <select data-g="reader_device_id">
+            <option value="">— nessuno —</option>
+            ${(d.lettori || [])
+              .map((l) => {
+                const nome = l.nome || l.device_id;
+                const extra = l.assente
+                  ? " (non più in Home Assistant)"
+                  : l.letture
+                    ? ` · ${l.letture} letture`
+                    : "";
+                return `<option value="${esc(l.device_id)}" ${
+                  l.device_id === g.reader_device_id ? "selected" : ""
+                }>${esc(nome + extra)}</option>`;
+              })
+              .join("")}
+          </select></label>
+        ${
+          (d.lettori || []).length
+            ? ""
+            : `<p class="nota">Nessun lettore ancora riconosciuto. Non si può
+                 dedurre quali dispositivi abbiano un lettore NFC: compaiono qui
+                 dopo aver letto almeno una tessera. Apri il censimento su
+                 questo varco e passa una tessera — il lettore viene riconosciuto
+                 e associato al varco da solo.</p>`
+        }
         <label class="check"><input type="checkbox" data-g="pre_hook_fail_closed"
           ${g.pre_hook_fail_closed ? "checked" : ""} /> Se il pre-hook fallisce, non aprire</label>
         <button data-save-gate="${esc(g.id)}">Salva varco</button>

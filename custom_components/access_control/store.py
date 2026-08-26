@@ -61,6 +61,11 @@ class AccessStore:
         # che nessuno l'abbia voluta. Una lettura da un altro varco viene
         # valutata normalmente.
         self.enrollment_gate: str = ""
+        # Lettori riconosciuti. Non si indovina quali dispositivi abbiano un
+        # lettore NFC guardando integrazione o modello: si osserva chi legge.
+        # Un dispositivo che ha emesso `tag_scanned` è un lettore, punto.
+        # { device_id: {"prima": iso, "ultima": iso, "letture": int} }
+        self.readers: dict[str, dict[str, Any]] = {}
 
     # ── caricamento e salvataggio ──────────────────────────────────────────
 
@@ -94,6 +99,8 @@ class AccessStore:
         self.failure_streak = int(lockout.get("failure_streak") or 0)
         self.locked_until = lockout.get("locked_until")
 
+        self.readers = dict(data.get("readers") or {})
+
     async def async_save(self) -> None:
         await self._store.async_save(
             {
@@ -105,6 +112,7 @@ class AccessStore:
                     "failure_streak": self.failure_streak,
                     "locked_until": self.locked_until,
                 },
+                "readers": self.readers,
             }
         )
 
@@ -209,6 +217,50 @@ class AccessStore:
         card.person = person or ""
         await self.async_save_and_notify()
         return card
+
+    # ── lettori riconosciuti ───────────────────────────────────────────────
+
+    async def async_note_reader(self, device_id: str) -> bool:
+        """Registra che questo dispositivo ha letto qualcosa.
+
+        È l'unico criterio sensato per dire "qui c'è un lettore NFC": né
+        l'integrazione né il modello lo dichiarano, e dedurlo dal nome
+        sarebbe indovinare. Chi legge è un lettore.
+
+        Ritorna True se è la prima volta che lo si vede.
+        """
+        if not device_id:
+            return False
+        ora = dt_util.utcnow().isoformat()
+        nuovo = device_id not in self.readers
+        voce = self.readers.setdefault(
+            device_id, {"prima": ora, "ultima": ora, "letture": 0}
+        )
+        voce["ultima"] = ora
+        voce["letture"] = int(voce.get("letture") or 0) + 1
+        await self.async_save()
+        return nuovo
+
+    def seed_readers(self, coppie: list[tuple[str, str | None]]) -> None:
+        """Semina i lettori dai tag già esistenti, senza aspettare una lettura.
+
+        L'integrazione Tag conserva su ogni tag `last_scanned_by_device_id`:
+        all'avvio è già una lista di dispositivi che hanno letto in passato,
+        quindi l'elenco non parte vuoto su un impianto in cui si è già
+        passata qualche tessera.
+        """
+        for device_id, quando in coppie:
+            if not device_id or device_id in self.readers:
+                continue
+            ora = quando or dt_util.utcnow().isoformat()
+            self.readers[device_id] = {"prima": ora, "ultima": ora, "letture": 0}
+
+    async def async_bind_reader(self, gate_id: str, device_id: str) -> None:
+        gate = self.gates.get(gate_id)
+        if gate is None:
+            raise KeyError(gate_id)
+        gate["reader_device_id"] = device_id
+        await self.async_save_and_notify()
 
     # ── enrollment ─────────────────────────────────────────────────────────
 
