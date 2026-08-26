@@ -8,6 +8,19 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **«Bambino», «adulto» e «togli» hanno un'icona.** Bambino e adulto sono la
+  stessa figura, una più piccola dell'altra: accanto si leggono per confronto,
+  senza dover interpretare due disegni diversi
+- **Si capisce che bisogna premere qualcosa.** L'avviso sul ruolo mancante
+  spiegava bene *perché*, ma stava sotto i pulsanti e non diceva *cosa fare*:
+  si leggeva a scelta già fatta, o non si leggeva. Ora l'istruzione — «scegli
+  qui sotto se è un bambino o un adulto» — apre il blocco, i pulsanti la
+  seguono e sono grandi, perché su quella scheda sono l'unica cosa da fare
+- Il messaggio del gruppo senza tessere ha un'icona contactless e dice
+  entrambi i modi per riempirlo, non solo il trascinamento
+
 ## [0.4.0] - 2026-08-26
 
 ### Corretto

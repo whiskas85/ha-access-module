@@ -47,10 +47,31 @@ const ICONE = {
   alert: "M13 14h-2V9h2m0 9h-2v-2h2M1 21h22L12 2z",
   close:
     "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
+  adulto:
+    "M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4",
+  // Stessa figura dell'adulto, più piccola e appoggiata in basso: accanto
+  // all'altra si legge come "il più piccolo" senza bisogno di un disegno
+  // diverso da interpretare.
+  bambino:
+    '<g transform="translate(12 15.5) scale(.6) translate(-12 -12)"><path d="M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4"/></g>',
+  // Tessera + onde: la lettura contactless. Le onde sono tratti, non pieni,
+  // quindi vanno disegnate con stroke e non con il fill del resto.
+  rfid:
+    '<rect x="2" y="6" width="11" height="12" rx="2.5"/>'
+    + '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">'
+    + '<path d="M16.2 8.9a4.4 4.4 0 0 1 0 6.2"/>'
+    + '<path d="M19.1 6.4a8.2 8.2 0 0 1 0 11.2"/></g>',
+  togliRuolo:
+    "M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c1.2 0 2.34.13 3.36.37l-1.7 1.7c-.54-.05-1.1-.07-1.66-.07-3.09 0-6 1.29-6 2v1h5.43l-2 2H4v-2c0-2.66 5.33-4 8-4M22.11 21.46 20.7 22.87 18.5 20.68l-2.2 2.19-1.41-1.41 2.19-2.2-2.19-2.2 1.41-1.41 2.2 2.19 2.2-2.19 1.41 1.41-2.19 2.2z",
 };
 
-const icona = (nome, cls = "") =>
-  `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${ICONE[nome] || ""}"/></svg>`;
+const icona = (nome, cls = "") => {
+  const d = ICONE[nome] || "";
+  // Una voce può essere il solo `d` di un path, oppure markup già pronto
+  // quando serve un gruppo con una trasformazione.
+  const dentro = d.startsWith("<") ? d : `<path d="${d}"/>`;
+  return `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${dentro}</svg>`;
+};
 
 const esc = (value) =>
   String(value ?? "").replace(
@@ -391,21 +412,35 @@ class AccessControlPanel extends HTMLElement {
       ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>`
       : `<span class="tag ruolo-mancante">${icona("alert")} ruolo da assegnare</span>`;
 
-    const sceltaRuolo = `
-      <div class="ruoli">
-        ${["bambino", "adulto"]
-          .map(
-            (r) =>
-              `<button class="mini ${p.ruolo === r ? "ok" : ""}"
-                 data-ruolo="${esc(p.entity_id)}|${r}">${r}</button>`,
-          )
-          .join("")}
-        ${
-          p.ruolo
-            ? `<button class="mini" data-ruolo="${esc(p.entity_id)}|">togli</button>`
-            : ""
-        }
-      </div>`;
+    // Con il ruolo già scelto bastano due pulsantini per cambiarlo. Senza,
+    // scegliere è l'unica cosa da fare su questa scheda: l'istruzione va
+    // prima dei pulsanti — dopo si legge a scelta già fatta o non si legge —
+    // e i pulsanti sono grandi, perché sono l'azione, non un dettaglio.
+    const bottoniRuolo = (cls) =>
+      ["bambino", "adulto"]
+        .map(
+          (r) =>
+            `<button class="${cls} ${p.ruolo === r ? "ok" : ""}"
+               data-ruolo="${esc(p.entity_id)}|${r}">${icona(r)}${r}</button>`,
+        )
+        .join("");
+
+    const sceltaRuolo = p.ruolo
+      ? `<div class="ruoli">
+           ${bottoniRuolo("mini")}
+           <button class="mini" data-ruolo="${esc(p.entity_id)}|"
+             title="Rimuovi il ruolo">${icona("togliRuolo")}togli</button>
+         </div>`
+      : `<div class="serve-ruolo">
+           <p class="nota">
+             ${icona("alert")}
+             <span><b>Scegli qui sotto se è un bambino o un adulto.</b>
+             Finché non ha un ruolo le sue tessere <b>non aprono nulla</b>.
+             Non viene trattata come adulto per comodità: sarebbe darle i
+             permessi più ampi proprio perché nessuno ha detto chi è.</span>
+           </p>
+           <div class="ruoli">${bottoniRuolo("scegli-ruolo")}</div>
+         </div>`;
 
     return `
       <section class="card gruppo ${p.ruolo ? "" : "senza-ruolo"}"
@@ -424,17 +459,11 @@ class AccessControlPanel extends HTMLElement {
         </header>
         ${sceltaRuolo}
         ${
-          p.ruolo
-            ? ""
-            : `<p class="nota avviso-blocco">${icona("alert")}
-                 Finché non ha un ruolo, le sue tessere <b>non aprono nulla</b>.
-                 Non viene trattata come adulto per comodità: sarebbe darle i
-                 permessi più ampi proprio perché nessuno ha detto chi è.</p>`
-        }
-        ${
           tessere.length
             ? this._tabellaTessere(tessere, persone)
-            : `<p class="nota vuoto-gruppo">Trascina qui una tessera per abbinargliela.</p>`
+            : `<p class="nota vuoto-gruppo">${icona("rfid", "ico-grande")}
+                 <span>Nessuna tessera. Trascinane una qui con la maniglia,
+                 oppure aprine l'elenco dal pulsante ⠿ della tessera.</span></p>`
         }
       </section>`;
   }
@@ -1086,9 +1115,19 @@ class AccessControlPanel extends HTMLElement {
                             display:inline-flex; align-items:center; gap:5px; }
       .tag.ruolo-mancante .ico { width:14px; height:14px; }
       .gruppo.senza-ruolo { border-color:rgba(255,167,38,.5); }
-      .avviso-blocco { display:flex; gap:8px; align-items:flex-start;
-                       background:rgba(255,167,38,.12); border-radius:8px; padding:10px 12px; }
-      .avviso-blocco .ico { flex:0 0 auto; color:#e08600; margin-top:2px; }
+
+      /* Ruolo mancante: l'istruzione e i pulsanti sono un blocco solo, così
+         non si legge il perché senza vedere cosa premere. */
+      .serve-ruolo { background:rgba(255,167,38,.12); border-radius:8px;
+                     padding:12px 14px; margin-bottom:12px; }
+      .serve-ruolo .nota { display:flex; gap:9px; align-items:flex-start; margin:0 0 11px; }
+      .serve-ruolo .nota > .ico { flex:0 0 auto; color:#e08600; margin-top:2px; }
+      .scegli-ruolo { background:var(--primary-color); color:var(--text-primary-color,#fff);
+                      padding:11px 20px; font-size:1rem; text-transform:capitalize; }
+      .scegli-ruolo.ok { outline:2px solid var(--primary-text-color); }
+      .scegli-ruolo .ico { width:21px; height:21px; }
+      .vuoto-gruppo { display:flex; align-items:center; gap:12px; }
+      .ico-grande { width:30px; height:30px; flex:0 0 auto; opacity:.55; }
 
       /* ── legenda degli stati ─────────────────────────────────────────── */
       .spiega { list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:10px; }
