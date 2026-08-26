@@ -15,6 +15,7 @@ from homeassistant.helpers import device_registry as dr
 from .const import (
     CARD_STATES,
     DEFAULT_GATE,
+    DEVICE_LEARNING_TIMEOUT_S,
     DOMAIN,
     ENROLLMENT_TIMEOUT_S,
     LOCKOUT_MODES,
@@ -101,38 +102,67 @@ def _persone(hass: HomeAssistant, store) -> list[dict[str, Any]]:
     return sorted(persone, key=lambda p: p["nome"].lower())
 
 
-def _lettori(hass: HomeAssistant, store) -> list[dict[str, Any]]:
-    """I dispositivi che hanno letto almeno una tessera.
+def _dispositivi_disponibili(hass: HomeAssistant, store) -> list[dict[str, Any]]:
+    """Tutti i dispositivi di Home Assistant, per la scelta con ricerca.
 
-    Non esiste un modo per chiedere a Home Assistant "quali device hanno un
-    lettore NFC": né l'integrazione né il modello lo dichiarano, e dedurlo dal
-    nome sarebbe indovinare. Ma un dispositivo che ha emesso `tag_scanned` ha
-    letto qualcosa, e questo lo sappiamo per averlo visto. È da qui che si
-    scelgono i lettori dei varchi, invece di far incollare a mano un device_id.
+    Non si filtra per integrazione o modello: non c'è un attributo che dica
+    "questo ha un lettore NFC", e un filtro indovinato nasconderebbe proprio
+    il dispositivo giusto senza spiegare perché non c'è. Si manda l'elenco
+    completo e si cerca; chi ha già letto qualcosa è marcato, così di solito
+    lo si trova in cima senza cercare.
     """
     registry = dr.async_get(hass)
-    lettori = []
-    for device_id, info in store.readers.items():
-        device = registry.async_get(device_id)
-        legato_a = [
-            g["id"]
-            for g in store.gates.values()
-            if g.get("reader_device_id") == device_id
-        ]
-        lettori.append(
+    fuori = []
+    for device in registry.devices.values():
+        if device.disabled_by:
+            continue
+        fuori.append(
             {
-                "device_id": device_id,
-                "nome": (device.name_by_user or device.name) if device else "",
-                "modello": (device.model or "") if device else "",
-                # Un lettore rimosso da Home Assistant resta nell'elenco ma va
-                # detto: altrimenti un varco resterebbe legato a un fantasma.
-                "assente": device is None,
-                "letture": info.get("letture", 0),
-                "ultima": info.get("ultima"),
-                "varchi": legato_a,
+                "device_id": device.id,
+                "nome": device.name_by_user or device.name or device.id,
+                "modello": device.model or "",
+                "marca": device.manufacturer or "",
+                "ha_letto": device.id in store.readers,
+                "letture": (store.readers.get(device.id) or {}).get("letture", 0),
+                "registrato": device.id in store.devices,
             }
         )
-    return sorted(lettori, key=lambda x: (not x["varchi"], x["nome"] or x["device_id"]))
+    # Chi ha già letto per primo: quasi sempre è quello che si sta cercando.
+    return sorted(
+        fuori, key=lambda d: (not d["ha_letto"], (d["nome"] or "").lower())
+    )
+
+
+def _dispositivi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
+    """I lettori registrati, con quello che si è osservato di loro."""
+    registry = dr.async_get(hass)
+    fuori = []
+    for device_id, voce in store.devices.items():
+        device = registry.async_get(device_id)
+        osservato = store.readers.get(device_id) or {}
+        fuori.append(
+            {
+                "device_id": device_id,
+                "nome": voce.get("nome")
+                or ((device.name_by_user or device.name) if device else "")
+                or device_id,
+                "modello": (device.model or "") if device else "",
+                "marca": (device.manufacturer or "") if device else "",
+                # Un dispositivo rimosso da Home Assistant resta registrato ma
+                # va detto: altrimenti un varco punta a un fantasma.
+                "assente": device is None,
+                "aggiunto": voce.get("aggiunto"),
+                "note": voce.get("note", ""),
+                "letture": osservato.get("letture", 0),
+                "ultima": osservato.get("ultima"),
+                "varchi": [
+                    g["id"]
+                    for g in store.gates.values()
+                    if g.get("reader_device_id") == device_id
+                ],
+            }
+        )
+    return sorted(fuori, key=lambda d: (d["nome"] or "").lower())
 
 
 def _varchi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
@@ -201,7 +231,12 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             )
         ],
         "varchi": _varchi(hass, store),
-        "lettori": _lettori(hass, store),
+        "dispositivi": _dispositivi(hass, store),
+        "dispositivi_ha": _dispositivi_disponibili(hass, store),
+        "registrazione_dispositivo": {
+            "attiva": store.device_learning_active,
+            "secondi": store.device_learning_seconds_left,
+        },
         "log": [e.to_dict() for e in store.log[:200]],
         "opzioni": {
             "stati_tessera": list(CARD_STATES),
@@ -292,6 +327,20 @@ class AccessCommandView(HomeAssistantView):
 
             elif action == "cancel_enrollment":
                 store.cancel_enrollment()
+
+            elif action == "register_device":
+                await store.async_register_device(
+                    body["device_id"], body.get("nome", ""), body.get("note", "")
+                )
+
+            elif action == "unregister_device":
+                await store.async_unregister_device(body["device_id"])
+
+            elif action == "start_device_learning":
+                store.start_device_learning(DEVICE_LEARNING_TIMEOUT_S)
+
+            elif action == "cancel_device_learning":
+                store.cancel_device_learning()
 
             elif action == "remove_card":
                 await store.async_remove_card(body["card_id"])

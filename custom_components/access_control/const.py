@@ -178,6 +178,7 @@ LOCKOUT_MODES: Final = (LOCKOUT_SIGNAL, LOCKOUT_BLOCK)
 EVENT_ACCESS: Final = f"{DOMAIN}_event"
 EVENT_LOCKOUT: Final = f"{DOMAIN}_lockout"
 EVENT_ENROLLED: Final = f"{DOMAIN}_enrolled"
+EVENT_DEVICE_REGISTERED: Final = f"{DOMAIN}_device_registered"
 
 # ───────────────────────────────────────────────────────────────────────────
 #  Enrollment
@@ -186,6 +187,12 @@ EVENT_ENROLLED: Final = f"{DOMAIN}_enrolled"
 # valutata. Ha una scadenza breve e non rinnovabile da sola: una modalità che
 # accetta tessere nuove non deve poter restare aperta per dimenticanza.
 ENROLLMENT_TIMEOUT_S: Final = 60
+
+# Registrazione automatica di un LETTORE. Cosa diversa dal censimento di una
+# tessera, e va tenuta diversa: qui interessa solo sapere quale dispositivo ha
+# letto. La tessera usata per farsi riconoscere viene **scartata** — è un
+# gancio, non una credenziale, e spesso è la prima che si ha in tasca.
+DEVICE_LEARNING_TIMEOUT_S: Final = 60
 
 SIGNAL_STATE_CHANGED: Final = f"{DOMAIN}_state_changed"
 
@@ -258,6 +265,7 @@ DEFAULT_GATE: Final[dict] = {
 # risposta arriverebbe dopo il pattern "non raggiungibile".
 PRE_HOOK_TIMEOUT_S: Final = 1.5
 
+CONF_DEVICES: Final = "devices"
 CONF_GATES: Final = "gates"
 CONF_CARDS: Final = "cards"
 CONF_SETTINGS: Final = "settings"

@@ -22,6 +22,7 @@ from .const import (
     CARD_UNKNOWN,
     DOMAIN,
     EVENT_ACCESS,
+    EVENT_DEVICE_REGISTERED,
     EVENT_ENROLLED,
     EVENT_LOCKOUT,
     LOCKOUT_BLOCK,
@@ -110,6 +111,14 @@ class AccessEvaluator:
         if device_id:
             await self.store.async_note_reader(device_id)
 
+        # Registrazione automatica del LETTORE. Va per prima, e soprattutto
+        # **scarta la tessera**: qui interessa solo sapere quale dispositivo
+        # ha letto. Chi si fa riconoscere un lettore usa la prima tessera che
+        # ha in tasca, e quella tessera non deve finire nel registro né essere
+        # valutata — sarebbe un censimento che nessuno ha chiesto.
+        if self.store.device_learning_active:
+            return await self._async_learn_device(gate, device_id)
+
         # In enrollment la lettura viene censita, non valutata. Si controlla
         # per primo: durante l'enrollment non ha senso negare una tessera
         # perché "non censita" — è esattamente ciò che stiamo rimediando.
@@ -154,6 +163,50 @@ class AccessEvaluator:
 
         return decision
 
+    # ── registrazione automatica di un lettore ─────────────────────────────
+
+    async def _async_learn_device(
+        self, gate: dict[str, Any], device_id: str
+    ) -> Decision:
+        """Registra il dispositivo che ha appena letto, e dimentica la tessera.
+
+        Nessuna riga nel registro accessi: non è avvenuto un accesso, né un
+        tentativo. È successo che un lettore si è presentato.
+        """
+        self.store.cancel_device_learning()
+
+        if not device_id:
+            # Una lettura senza device_id non insegna niente: succede con
+            # sorgenti che non dichiarano da dove arrivano.
+            _LOGGER.warning(
+                "Registrazione automatica: lettura senza device_id, ignorata"
+            )
+            await self._async_respond(gate, granted=False)
+            await self._async_send_notification(
+                "⚠️ Lettore non riconosciuto",
+                "La lettura non dichiara da quale dispositivo arriva: "
+                "aggiungilo dall'elenco invece che automaticamente.",
+            )
+            return Decision(RESULT_DENIED, "lettura_senza_device_id")
+
+        nuovo = await self.store.async_register_device(device_id)
+        await self._async_respond(gate, granted=True)
+
+        self.hass.bus.async_fire(
+            EVENT_DEVICE_REGISTERED,
+            {
+                "device_id": device_id,
+                "nuovo": nuovo,
+                "timestamp": dt_util.utcnow().isoformat(),
+            },
+        )
+        await self._async_send_notification(
+            "📟 Lettore registrato" if nuovo else "📟 Lettore già registrato",
+            "Ora puoi associarlo a un varco. La tessera usata per il "
+            "riconoscimento è stata ignorata.",
+        )
+        return Decision(RESULT_ENROLLED, "dispositivo_registrato")
+
     # ── enrollment ─────────────────────────────────────────────────────────
 
     async def _async_enroll(
@@ -168,20 +221,11 @@ class AccessEvaluator:
         """
         self.store.cancel_enrollment()
 
-        # Il censimento è anche il momento in cui il varco impara qual è il
-        # suo lettore: hai aperto la finestra su questo varco e hai passato la
-        # tessera a quel lettore, quindi l'associazione l'hai appena fatta tu
-        # con un gesto. Si scrive solo se il varco non ne aveva già uno — non
-        # si riscrive una configurazione esistente di nascosto.
-        legato = False
-        if device_id and not gate.get("reader_device_id"):
-            await self.store.async_bind_reader(gate_id, device_id)
-            legato = True
-            _LOGGER.info(
-                "Varco %s associato al lettore %s durante il censimento",
-                gate_id,
-                device_id,
-            )
+        # Il censimento NON tocca la configurazione dei lettori. Censire una
+        # tessera e aggiungere un dispositivo sono due cose diverse: legare
+        # qui il varco al lettore significherebbe cambiare l'impianto come
+        # effetto collaterale di un gesto che riguarda una tessera. Se il
+        # lettore va aggiunto, lo si fa dalla scheda Dispositivi.
 
         esistente = self.store.card_by_uid(uid)
         if esistente is not None:
@@ -226,15 +270,10 @@ class AccessEvaluator:
         self.hass.bus.async_fire(EVENT_ACCESS, event.to_dict())
         await self.store.async_append_log(event)
 
-        coda = (
-            f" Varco «{gate.get('name', gate_id)}» associato al lettore."
-            if legato
-            else ""
-        )
         await self._async_send_notification(
             "🆕 Tessera censita",
             f"{card.label} — {motivo}. "
-            f"Non apre nulla finché non le assegni un titolare.{coda}",
+            "Non apre nulla finché non le assegni un titolare.",
         )
         return Decision(RESULT_ENROLLED, motivo, card)
 

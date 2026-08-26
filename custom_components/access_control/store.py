@@ -16,6 +16,7 @@ from .const import (
     CARD_BLACKLISTED,
     CARD_DISABLED,
     CONF_CARDS,
+    CONF_DEVICES,
     CONF_GATES,
     CONF_LOG,
     CONF_SETTINGS,
@@ -61,11 +62,23 @@ class AccessStore:
         # che nessuno l'abbia voluta. Una lettura da un altro varco viene
         # valutata normalmente.
         self.enrollment_gate: str = ""
-        # Lettori riconosciuti. Non si indovina quali dispositivi abbiano un
-        # lettore NFC guardando integrazione o modello: si osserva chi legge.
-        # Un dispositivo che ha emesso `tag_scanned` è un lettore, punto.
+        # Due elenchi distinti, e la distinzione conta.
+        #
+        # `readers` è ciò che si è OSSERVATO: chi ha emesso `tag_scanned`.
+        # Si popola da solo e non autorizza niente — è materiale per i
+        # suggerimenti.
         # { device_id: {"prima": iso, "ultima": iso, "letture": int} }
         self.readers: dict[str, dict[str, Any]] = {}
+
+        # `devices` è ciò che è stato REGISTRATO: i lettori che qualcuno ha
+        # deciso far parte dell'impianto. Solo questi possono essere associati
+        # a un varco. Un dispositivo può essere registrato senza aver mai letto
+        # nulla (scelto dall'elenco), e può aver letto molto senza essere
+        # registrato: sono due fatti diversi e non vanno confusi.
+        self.devices: dict[str, dict[str, Any]] = {}
+
+        # Registrazione automatica di un lettore in corso (non persistita).
+        self.device_learning_until = None
 
     # ── caricamento e salvataggio ──────────────────────────────────────────
 
@@ -100,6 +113,7 @@ class AccessStore:
         self.locked_until = lockout.get("locked_until")
 
         self.readers = dict(data.get("readers") or {})
+        self.devices = dict(data.get(CONF_DEVICES) or {})
 
     async def async_save(self) -> None:
         await self._store.async_save(
@@ -113,6 +127,7 @@ class AccessStore:
                     "locked_until": self.locked_until,
                 },
                 "readers": self.readers,
+                CONF_DEVICES: self.devices,
             }
         )
 
@@ -262,6 +277,71 @@ class AccessStore:
         gate["reader_device_id"] = device_id
         await self.async_save_and_notify()
 
+    # ── dispositivi registrati ─────────────────────────────────────────────
+
+    async def async_register_device(
+        self, device_id: str, nome: str = "", note: str = ""
+    ) -> bool:
+        """Aggiunge un lettore all'impianto. Ritorna True se è nuovo."""
+        if not device_id:
+            raise ValueError("device_id vuoto")
+        nuovo = device_id not in self.devices
+        voce = self.devices.setdefault(
+            device_id, {"aggiunto": dt_util.utcnow().isoformat()}
+        )
+        if nome:
+            voce["nome"] = nome
+        if note:
+            voce["note"] = note
+        await self.async_save_and_notify()
+        return nuovo
+
+    async def async_unregister_device(self, device_id: str) -> list[str]:
+        """Toglie un lettore, e stacca i varchi che lo usavano.
+
+        Lasciare un varco che punta a un dispositivo non più registrato
+        significherebbe un varco che non riceve mai letture senza spiegare
+        perché: meglio staccarlo e dirlo.
+        """
+        self.devices.pop(device_id, None)
+        staccati = []
+        for gate_id, gate in self.gates.items():
+            if gate.get("reader_device_id") == device_id:
+                gate["reader_device_id"] = ""
+                staccati.append(gate_id)
+        await self.async_save_and_notify()
+        return staccati
+
+    # ── registrazione automatica di un lettore ─────────────────────────────
+
+    @property
+    def device_learning_active(self) -> bool:
+        if not self.device_learning_until:
+            return False
+        return dt_util.utcnow() < self.device_learning_until
+
+    @property
+    def device_learning_seconds_left(self) -> int:
+        if not self.device_learning_active:
+            return 0
+        return max(
+            0,
+            int((self.device_learning_until - dt_util.utcnow()).total_seconds()),
+        )
+
+    def start_device_learning(self, seconds: int) -> None:
+        # Le due modalità non possono essere aperte insieme: una lettura non
+        # può essere allo stesso tempo "censisci questa tessera" e "scarta
+        # questa tessera, mi serve solo il lettore".
+        self.enrollment_until = None
+        self.enrollment_gate = ""
+        self.device_learning_until = dt_util.utcnow() + timedelta(seconds=seconds)
+        self.notify()
+
+    def cancel_device_learning(self) -> None:
+        self.device_learning_until = None
+        self.notify()
+
     # ── enrollment ─────────────────────────────────────────────────────────
 
     @property
@@ -279,6 +359,8 @@ class AccessStore:
         )
 
     def start_enrollment(self, seconds: int, gate_id: str = "") -> None:
+        # Vedi start_device_learning: le due modalità si escludono.
+        self.device_learning_until = None
         self.enrollment_gate = gate_id or next(iter(self.gates), "")
         self.enrollment_until = dt_util.utcnow() + timedelta(seconds=seconds)
         self.notify()

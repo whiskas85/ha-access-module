@@ -8,6 +8,7 @@ const PANEL_VERSION = "0.5.0";
 const TABS = [
   { id: "stato", label: "Stato" },
   { id: "tessere", label: "Tessere" },
+  { id: "dispositivi", label: "Dispositivi" },
   { id: "registro", label: "Registro" },
   { id: "impostazioni", label: "Impostazioni" },
 ];
@@ -61,6 +62,12 @@ const ICONE = {
     + '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">'
     + '<path d="M16.2 8.9a4.4 4.4 0 0 1 0 6.2"/>'
     + '<path d="M19.1 6.4a8.2 8.2 0 0 1 0 11.2"/></g>',
+  lettore:
+    "M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2m0 2v14h16V5zM6 7h5v5H6zm0 7h12v2H6zm7-7h5v2h-5zm0 3h5v2h-5z",
+  cerca:
+    "M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5",
+  piu:
+    "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z",
   togliRuolo:
     "M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c1.2 0 2.34.13 3.36.37l-1.7 1.7c-.54-.05-1.1-.07-1.66-.07-3.09 0-6 1.29-6 2v1h5.43l-2 2H4v-2c0-2.66 5.33-4 8-4M22.11 21.46 20.7 22.87 18.5 20.68l-2.2 2.19-1.41-1.41 2.19-2.2-2.19-2.2 1.41-1.41 2.2 2.19 2.2-2.19 1.41 1.41-2.19 2.2z",
 };
@@ -205,6 +212,7 @@ class AccessControlPanel extends HTMLElement {
   _corpo(d) {
     if (this._tab === "stato") return this._vistaStato(d);
     if (this._tab === "tessere") return this._vistaTessere(d);
+    if (this._tab === "dispositivi") return this._vistaDispositivi(d);
     if (this._tab === "registro") return this._vistaRegistro(d);
     return this._vistaImpostazioni(d);
   }
@@ -292,11 +300,7 @@ class AccessControlPanel extends HTMLElement {
                   </button>
                   <span class="uid">${
                     g.reader_device_mancante
-                      ? `<span class="avviso">${icona("alert")} lettore ancora da riconoscere${
-                          piuVarchi
-                            ? ": apri il censimento qui e passa una tessera"
-                            : " — verrà associato al primo censimento"
-                        }</span>`
+                      ? `<span class="avviso">${icona("alert")} nessun lettore associato — vai in Dispositivi</span>`
                       : `lettore: ${esc(g.reader_device_name || g.reader_device_id)}`
                   }</span>
                 </div>`,
@@ -555,6 +559,133 @@ class AccessControlPanel extends HTMLElement {
       </div>`;
   }
 
+  // ── dispositivi ──────────────────────────────────────────────────────
+
+  _vistaDispositivi(d) {
+    const reg = d.registrazione_dispositivo || {};
+    const registrati = d.dispositivi || [];
+
+    // ── riconoscimento automatico ──────────────────────────────────────
+    const auto = reg.attiva
+      ? `<div class="attesa">
+           <div class="pulsa"></div>
+           <div class="attesa-testo">
+             <strong>In attesa di una lettura da un lettore qualsiasi</strong>
+             <p class="nota">Passa una tessera — <b>una qualunque</b> — davanti
+               al lettore che vuoi aggiungere. La tessera viene <b>ignorata</b>:
+               serve solo a far dire al dispositivo «sono io». Non viene censita
+               né valutata. Si chiude fra <b>${reg.secondi}s</b>.</p>
+           </div>
+           <button class="danger" data-act="stop-learn">${icona("close")} Annulla</button>
+         </div>`
+      : `<div class="riga">
+           <button data-act="start-learn">${icona("lettore")} Riconoscimento automatico</button>
+           <p class="nota" style="flex:1 1 320px">
+             Premi qui e poi passa una tessera qualsiasi davanti al lettore che
+             vuoi aggiungere: il modulo capisce da solo quale dispositivo è.
+             <b>La tessera usata non viene censita</b> — è solo un gesto per
+             farsi riconoscere.
+           </p>
+         </div>`;
+
+    // ── elenco registrati ──────────────────────────────────────────────
+    const righe = registrati.length
+      ? registrati
+          .map(
+            (x) => `
+        <tr class="${x.assente ? "assente" : ""}">
+          <td data-etichetta="Lettore">
+            <b>${esc(x.nome)}</b>
+            <div class="uid">${esc([x.marca, x.modello].filter(Boolean).join(" ") || x.device_id)}</div>
+          </td>
+          <td data-etichetta="Letture">${x.letture || 0}
+            <div class="uid">${x.ultima ? "ultima " + quando(x.ultima) : "mai"}</div></td>
+          <td data-etichetta="Varco">${
+            x.varchi.length
+              ? x.varchi.map((v) => `<span class="pill s-attiva">${esc(v)}</span>`).join(" ")
+              : '<span class="uid">non associato</span>'
+          }</td>
+          <td data-etichetta="Stato">${
+            x.assente
+              ? `<span class="pill s-blacklist">${icona("alert")} non più in HA</span>`
+              : '<span class="pill s-attiva">presente</span>'
+          }</td>
+          <td data-etichetta="Azioni"><div class="azioni">
+            <button class="mini danger" data-togli-disp="${esc(x.device_id)}">
+              ${icona("delete")}<span>Rimuovi</span></button>
+          </div></td>
+        </tr>`,
+          )
+          .join("")
+      : `<tr><td colspan="5" class="vuoto">Nessun lettore registrato.</td></tr>`;
+
+    // ── scelta dall'elenco, con ricerca ────────────────────────────────
+    const q = (this._cercaDisp || "").toLowerCase().trim();
+    const candidati = (d.dispositivi_ha || []).filter((x) => {
+      if (x.registrato) return false;
+      if (!q) return x.ha_letto; // senza ricerca si mostrano solo i plausibili
+      return [x.nome, x.modello, x.marca].join(" ").toLowerCase().includes(q);
+    });
+
+    const elenco = candidati.length
+      ? candidati
+          .slice(0, 60)
+          .map(
+            (x) => `
+        <button class="candidato" data-agg-disp="${esc(x.device_id)}">
+          ${icona("piu")}
+          <span class="cand-testo">
+            <b>${esc(x.nome)}</b>
+            <span class="uid">${esc([x.marca, x.modello].filter(Boolean).join(" ") || "—")}</span>
+          </span>
+          ${x.ha_letto ? `<span class="pill s-attiva">ha letto ${x.letture}×</span>` : ""}
+        </button>`,
+          )
+          .join("")
+      : `<p class="nota">${
+          q
+            ? "Nessun dispositivo trovato con questo testo."
+            : "Nessun dispositivo ha ancora letto qualcosa. Scrivi qui sopra per cercarne uno per nome, oppure usa il riconoscimento automatico."
+        }</p>`;
+
+    return `
+      <section class="card">
+        <h2>Aggiungi un lettore</h2>
+        ${auto}
+      </section>
+
+      <section class="card">
+        <h2>…oppure scegliilo dall'elenco</h2>
+        <div class="cerca-riga">
+          ${icona("cerca")}
+          <input id="cerca-disp" placeholder="Cerca un dispositivo per nome, marca o modello…"
+                 value="${esc(this._cercaDisp || "")}" />
+        </div>
+        <p class="nota">Home Assistant non sa dire quali dispositivi abbiano un
+          lettore NFC, quindi qui ci sono <b>tutti</b>: un filtro indovinato
+          nasconderebbe proprio quello giusto. Senza ricerca vedi solo quelli
+          che <b>hanno già letto qualcosa</b>, che di solito sono quelli che
+          cerchi.</p>
+        <div class="candidati">${elenco}</div>
+      </section>
+
+      <section class="card">
+        <h2>Lettori registrati</h2>
+        <div class="tabella">
+          <table>
+            <thead><tr>
+              <th>Lettore</th><th>Letture</th><th>Varco</th><th>Stato</th><th>Azioni</th>
+            </tr></thead>
+            <tbody>${righe}</tbody>
+          </table>
+        </div>
+        <p class="nota">Solo i lettori registrati possono essere associati a un
+          varco, dalla scheda Impostazioni. Rimuovendone uno, i varchi che lo
+          usavano restano senza lettore — e il pannello lo dice, invece di
+          lasciarli in silenzio a non ricevere mai letture.</p>
+      </section>`;
+  }
+
   // ── registro ─────────────────────────────────────────────────────────
 
   _vistaRegistro(d) {
@@ -628,9 +759,8 @@ class AccessControlPanel extends HTMLElement {
         <label>Lettore di questo varco
           <select data-g="reader_device_id">
             <option value="">— nessuno —</option>
-            ${(d.lettori || [])
+            ${(d.dispositivi || [])
               .map((l) => {
-                const nome = l.nome || l.device_id;
                 const extra = l.assente
                   ? " (non più in Home Assistant)"
                   : l.letture
@@ -638,18 +768,17 @@ class AccessControlPanel extends HTMLElement {
                     : "";
                 return `<option value="${esc(l.device_id)}" ${
                   l.device_id === g.reader_device_id ? "selected" : ""
-                }>${esc(nome + extra)}</option>`;
+                }>${esc((l.nome || l.device_id) + extra)}</option>`;
               })
               .join("")}
           </select></label>
         ${
-          (d.lettori || []).length
+          (d.dispositivi || []).length
             ? ""
-            : `<p class="nota">Nessun lettore ancora riconosciuto. Non si può
-                 dedurre quali dispositivi abbiano un lettore NFC: compaiono qui
-                 dopo aver letto almeno una tessera. Apri il censimento su
-                 questo varco e passa una tessera — il lettore viene riconosciuto
-                 e associato al varco da solo.</p>`
+            : `<p class="nota">Nessun lettore registrato: aggiungilo dalla
+                 scheda <b>Dispositivi</b>. Solo i lettori registrati possono
+                 essere associati a un varco — così l'elenco qui resta corto e
+                 fatto di cose che hai scelto tu.</p>`
         }
         <label class="check"><input type="checkbox" data-g="pre_hook_fail_closed"
           ${g.pre_hook_fail_closed ? "checked" : ""} /> Se il pre-hook fallisce, non aprire</label>
@@ -831,6 +960,45 @@ class AccessControlPanel extends HTMLElement {
       // Il trascinamento della riga non deve partire selezionando il testo.
       el.addEventListener("mousedown", (ev) => ev.stopPropagation());
       el.addEventListener("dragstart", (ev) => ev.preventDefault());
+    });
+
+    r.querySelector('[data-act="start-learn"]')?.addEventListener("click", () =>
+      this._comando({ action: "start_device_learning" }),
+    );
+
+    r.querySelector('[data-act="stop-learn"]')?.addEventListener("click", () =>
+      this._comando({ action: "cancel_device_learning" }),
+    );
+
+    r.querySelectorAll("[data-agg-disp]").forEach((el) =>
+      el.addEventListener("click", () =>
+        this._comando({ action: "register_device", device_id: el.dataset.aggDisp }),
+      ),
+    );
+
+    r.querySelectorAll("[data-togli-disp]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (confirm("Rimuovere questo lettore? I varchi che lo usano resteranno senza lettore.")) {
+          this._comando({
+            action: "unregister_device",
+            device_id: el.dataset.togliDisp,
+          });
+        }
+      }),
+    );
+
+    // La ricerca filtra localmente: l'elenco dei dispositivi e' gia' tutto
+    // qui, non serve un giro sul server per ogni lettera.
+    const cerca = r.getElementById("cerca-disp");
+    cerca?.addEventListener("input", () => {
+      this._cercaDisp = cerca.value;
+      const pos = cerca.selectionStart;
+      this._render();
+      const nuovo = this.shadowRoot.getElementById("cerca-disp");
+      if (nuovo) {
+        nuovo.focus();
+        nuovo.setSelectionRange(pos, pos);
+      }
     });
 
     // ── assegnazione a tocchi (l'alternativa al trascinamento) ─────────
@@ -1154,6 +1322,26 @@ class AccessControlPanel extends HTMLElement {
       .scegli-ruolo .ico { width:21px; height:21px; }
       .vuoto-gruppo { display:flex; align-items:center; gap:12px; }
       .ico-grande { width:30px; height:30px; flex:0 0 auto; opacity:.55; }
+
+      /* ── scheda dispositivi ──────────────────────────────────────────── */
+      .cerca-riga { display:flex; align-items:center; gap:10px; margin-bottom:12px;
+                    border:1px solid var(--divider-color); border-radius:8px; padding:0 12px; }
+      .cerca-riga .ico { color:var(--secondary-text-color); }
+      .cerca-riga input { flex:1; border:none; background:none; padding:12px 0; }
+      .cerca-riga input:focus { outline:none; }
+      .cerca-riga:focus-within { border-color:var(--primary-color); }
+      .candidati { display:flex; flex-direction:column; gap:8px; max-height:420px;
+                   overflow-y:auto; }
+      .candidato { display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+                   background:none; border:1px solid var(--divider-color);
+                   color:var(--primary-text-color); padding:11px 13px; }
+      .candidato:hover { border-color:var(--primary-color);
+                         background:color-mix(in srgb, var(--primary-color) 8%, transparent); }
+      .candidato .ico { color:var(--primary-color); }
+      .cand-testo { flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
+      .cand-testo b { font-size:.98rem; }
+      tr.assente { opacity:.7; }
+      tr.assente .pill .ico { width:13px; height:13px; vertical-align:-2px; }
 
       /* ── legenda degli stati ─────────────────────────────────────────── */
       .spiega { list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:10px; }

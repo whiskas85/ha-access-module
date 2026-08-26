@@ -8,6 +8,38 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Scheda «Dispositivi»: aggiungere un lettore e censire una tessera sono
+  due cose diverse.** Prima erano accoppiate, e la conseguenza era che non si
+  poteva registrare un lettore senza anche censire una tessera, né registrarlo
+  *prima* di avere tessere
+  - **Riconoscimento automatico**: premi il pulsante e passi una tessera —
+    **una qualunque** — davanti al lettore da aggiungere. Il modulo prende il
+    dispositivo e **scarta la tessera**: non viene censita né valutata, non
+    lascia righe nel registro accessi. È un gesto per farsi riconoscere, non
+    una credenziale, e di solito si usa la prima tessera che si ha in tasca
+  - **Oppure lo scegli da un elenco, con barra di ricerca** su nome, marca e
+    modello. L'elenco contiene *tutti* i dispositivi: non esiste un attributo
+    che dica «questo ha un lettore NFC», e un filtro indovinato nasconderebbe
+    proprio quello giusto. Senza ricerca vedi solo quelli che hanno già letto
+    qualcosa, che di norma sono quelli che cerchi
+  - Un lettore rimosso da Home Assistant resta in elenco ma **marcato**;
+    rimuoverlo stacca i varchi che lo usavano, invece di lasciarli a non
+    ricevere mai letture senza spiegare perché
+- Solo i lettori **registrati** possono essere associati a un varco, così
+  l'elenco nelle Impostazioni resta corto e fatto di scelte esplicite
+
+### Modificato
+
+- **Il censimento di una tessera non tocca più la configurazione dei lettori.**
+  Nella 0.5.0 legava il varco al lettore come effetto collaterale: comodo, ma
+  cambiava l'impianto durante un gesto che riguardava una tessera. Ora quella
+  è una cosa che si fa dalla scheda Dispositivi, di proposito
+- Le due modalità di apprendimento si escludono a vicenda: una lettura non può
+  essere insieme «censisci questa tessera» e «scarta questa tessera, mi serve
+  solo il lettore»
+
 ## [0.5.0] - 2026-08-26
 
 ### Aggiunto
