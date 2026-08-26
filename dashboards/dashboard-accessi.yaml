@@ -1,0 +1,252 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  dashboard-accessi — due viste: operativa e setup
+#
+#  Importazione:
+#    Impostazioni -> Dashboard -> Aggiungi dashboard -> Nuova dashboard da zero
+#    Titolo "Accessi", URL "dashboard-accessi"
+#    poi: menu tre puntini -> Modifica -> tre puntini -> Editor YAML
+#    e incollare da `views:` in giu'.
+# ═══════════════════════════════════════════════════════════════════════════
+
+title: Accessi
+
+views:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  #  VISTA OPERATIVA — cosa sta succedendo adesso
+  # ─────────────────────────────────────────────────────────────────────────
+  - title: Stato
+    path: stato
+    icon: mdi:shield-key
+    type: sections
+    max_columns: 2
+    sections:
+
+      - type: grid
+        cards:
+          # Card markdown consolidata: un solo blocco che aggrega stato,
+          # motivo, ultimo accesso, porta e dinieghi. Preferita a piu' tile
+          # separati — stessa scelta fatta per la card Irrigazione.
+          - type: markdown
+            content: "{{ state_attr('sensor.access_riepilogo','markdown') }}"
+
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Azioni rapide
+            heading_style: title
+
+          - type: tile
+            entity: input_boolean.access_master
+            name: Master accessi
+            icon: mdi:shield-key
+            features:
+              - type: switch-toggle
+
+          - type: tile
+            entity: binary_sensor.access_armed
+            name: Sistema armato
+            state_content: state
+
+          - type: tile
+            entity: input_select.access_state
+            name: Stato macchina
+            features:
+              - type: select-options
+
+      - type: grid
+        column_span: 1
+        cards:
+          - type: heading
+            heading: Varchi
+            heading_style: title
+
+          - type: tile
+            entity: sensor.access_door_status
+            name: Porta blindata
+            icon: mdi:door
+
+          - type: tile
+            entity: lock.portone
+            name: Serratura
+            features:
+              - type: lock-open-door
+
+          - type: tile
+            entity: switch.cancelletto
+            name: Cancelletto
+            icon: mdi:gate
+
+          - type: tile
+            entity: binary_sensor.access_door_ajar
+            name: Porta socchiusa
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Registro
+            heading_style: title
+
+          - type: tile
+            entity: input_datetime.access_last_entry
+            name: Ultimo accesso
+
+          - type: tile
+            entity: input_text.access_last_credential
+            name: Ultima credenziale
+
+          - type: tile
+            entity: counter.access_denied_today
+            name: Negati oggi
+
+          - type: logbook
+            target:
+              entity_id:
+                - binary_sensor.access_armed
+                - input_select.access_state
+                - lock.portone
+                - binary_sensor.contatto_porta_blindata_window
+            hours_to_show: 48
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ingresso
+            heading_style: title
+          - type: picture-entity
+            entity: camera.ingresso_principale_live_view
+            camera_view: auto
+            show_state: false
+            show_name: false
+
+
+  # ─────────────────────────────────────────────────────────────────────────
+  #  VISTA SETUP — configurazione, non uso quotidiano
+  # ─────────────────────────────────────────────────────────────────────────
+  - title: Setup
+    path: setup
+    icon: mdi:cog
+    type: sections
+    max_columns: 2
+    sections:
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Finestra scuola
+            heading_style: title
+
+          - type: tile
+            entity: binary_sensor.access_finestra_scuola
+            name: Finestra attiva ora
+
+          - type: entities
+            entities:
+              - entity: input_datetime.access_school_start
+                name: Inizio
+              - entity: input_datetime.access_school_end
+                name: Fine
+
+          - type: entities
+            title: Giorni abilitati
+            entities:
+              - entity: input_boolean.access_school_day_monday
+                name: Lunedi
+              - entity: input_boolean.access_school_day_tuesday
+                name: Martedi
+              - entity: input_boolean.access_school_day_wednesday
+                name: Mercoledi
+              - entity: input_boolean.access_school_day_thursday
+                name: Giovedi
+              - entity: input_boolean.access_school_day_friday
+                name: Venerdi
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Soglie e comportamento
+            heading_style: title
+
+          - type: entities
+            entities:
+              - entity: input_number.access_sleep_delay
+                name: Ritardo ritorno a sleep
+              - entity: input_number.access_door_ajar_alert
+                name: Soglia porta socchiusa
+              - entity: input_number.access_rate_limit_window
+                name: Finestra rate limit
+              - entity: input_number.access_rate_limit_max
+                name: Tentativi ammessi
+              - entity: input_boolean.access_notify_on_entry
+                name: Notifica ogni accesso
+              - entity: input_boolean.access_snapshot_on_entry
+                name: Allega immagine Ring
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Credenziali censite
+            heading_style: title
+
+          - type: markdown
+            content: >-
+              Inserire l'UID **esattamente** come lo riporta l'integrazione Tag
+              (maiuscolo, con trattini). Campo vuoto = credenziale non censita:
+              non apre nulla.
+
+
+              Gli UID vivono solo qui. Non finiscono nel repository, che e'
+              pubblico: **un UID pubblicato e' un tag gia' clonato.**
+
+          - type: entities
+            entities:
+              - entity: input_text.access_cred_bambino
+                name: Tag bambino
+              - entity: input_text.access_cred_adulto_1
+                name: Tag adulto 1
+              - entity: input_text.access_cred_adulto_2
+                name: Tag adulto 2
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Diagnostica lettore
+            heading_style: title
+
+          - type: markdown
+            content: >-
+              I tre pulsanti provano i pattern del buzzer senza coinvolgere la
+              logica di accesso. Servono a distinguere "buzzer guasto" da
+              "logica che nega".
+
+          - type: tile
+            entity: button.giardino_rfid_ingresso_buzzer_test_ok
+            name: Pattern OK
+          - type: tile
+            entity: button.giardino_rfid_ingresso_buzzer_test_ko
+            name: Pattern KO
+          - type: tile
+            entity: button.giardino_rfid_ingresso_buzzer_test_attesa
+            name: Pattern non raggiungibile
+          - type: tile
+            entity: update.rfid_ingresso_firmware
+            name: Firmware nodo
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Perche' il sistema fa cosi'
+            heading_style: title
+          - type: entities
+            entities:
+              - entity: sensor.access_state_reason
+                name: Motivo stato
+              - entity: binary_sensor.access_presenza_recente
+                name: Presenza recente
+              - entity: binary_sensor.access_adulto_in_avvicinamento
+                name: Adulto in avvicinamento
+              - entity: counter.access_rate_limit_hits
+                name: Tentativi finestra corrente
+              - entity: timer.access_rate_limit_window
+                name: Finestra rate limit
