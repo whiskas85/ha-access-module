@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-26
+
 ### Modificato
 
 - **«Bambino», «adulto» e «togli» hanno un'icona.** Bambino e adulto sono la
