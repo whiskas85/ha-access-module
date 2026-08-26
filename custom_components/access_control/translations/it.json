@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Controllo Accessi",
+        "description": "Si configura qui solo ciò che serve per partire. Tessere, varchi, hook e soglie si gestiscono dal pannello Accessi.",
+        "data": {
+          "person_entities": "Persone da seguire",
+          "nearby_zone": "Zona di avvicinamento",
+          "door_lock_entity": "Serratura",
+          "door_contact_entity": "Contatto sulla porta",
+          "camera_entity": "Telecamera dell'ingresso"
+        },
+        "data_description": {
+          "nearby_zone": "Quando un adulto vi entra, il sistema passa in rientro adulto.",
+          "door_contact_entity": "Seconda fonte indipendente dalla serratura: se le due si contraddicono è un guasto o un forzamento."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Controllo Accessi è già configurato."
+    }
+  },
+  "services": {
+    "scan": {
+      "name": "Valuta una lettura",
+      "description": "Inietta la lettura di una credenziale come se arrivasse da un lettore."
+    },
+    "enroll_card": {
+      "name": "Censisci una tessera",
+      "description": "Aggiunge una tessera al registro o ne aggiorna i dati."
+    },
+    "set_card_state": {
+      "name": "Cambia stato di una tessera",
+      "description": "Attiva, disabilita o mette in blacklist."
+    },
+    "remove_card": {
+      "name": "Elimina una tessera",
+      "description": "Rimuove la tessera dal registro."
+    },
+    "unlock_readers": {
+      "name": "Sblocca i lettori",
+      "description": "Azzera il lockout e i fallimenti consecutivi."
+    },
+    "clear_log": {
+      "name": "Svuota il registro accessi",
+      "description": "Cancella tutte le righe del registro."
+    }
+  }
+}

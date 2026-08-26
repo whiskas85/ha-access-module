@@ -1,0 +1,111 @@
+scan:
+  name: Valuta una lettura
+  description: >-
+    Inietta la lettura di una credenziale come se arrivasse da un lettore.
+    Utile per provare tutta la catena senza andare al varco, e per i lettori
+    che non passano dall'integrazione Tag.
+  fields:
+    uid:
+      name: UID
+      description: UID della credenziale, in qualunque formato.
+      required: true
+      example: "04-A1-B2-C3"
+      selector:
+        text:
+    gate:
+      name: Varco
+      description: Id del varco. Se omesso si usa il primo configurato.
+      example: ingresso
+      selector:
+        text:
+
+enroll_card:
+  name: Censisci una tessera
+  description: >-
+    Aggiunge una tessera al registro, o aggiorna i dati di una già presente
+    con lo stesso UID. Il livello di sicurezza deriva dalla tecnologia.
+  fields:
+    uid:
+      name: UID
+      required: true
+      selector:
+        text:
+    name:
+      name: Nome
+      description: Etichetta leggibile, es. "portachiavi scuola".
+      selector:
+        text:
+    person:
+      name: Titolare
+      description: L'entità person a cui la tessera è abbinata.
+      selector:
+        entity:
+          domain: person
+    technology:
+      name: Tecnologia
+      description: >-
+        Da cui deriva il livello di sicurezza. Va dichiarata a mano finché il
+        lettore non riporterà SAK/ATQA insieme all'UID.
+      default: sconosciuta
+      selector:
+        select:
+          options:
+            - mifare_classic
+            - mifare_ultralight
+            - ntag424
+            - impronta
+            - sconosciuta
+    note:
+      name: Note
+      selector:
+        text:
+
+set_card_state:
+  name: Cambia stato di una tessera
+  description: >-
+    Attiva, disabilita o mette in blacklist. Disabilitata è una sospensione
+    silenziosa; blacklist allarma se la tessera ripassa.
+  fields:
+    card_id:
+      name: Id tessera
+      description: In alternativa all'UID.
+      selector:
+        text:
+    uid:
+      name: UID
+      description: In alternativa all'id.
+      selector:
+        text:
+    state:
+      name: Stato
+      required: true
+      selector:
+        select:
+          options:
+            - attiva
+            - disabilitata
+            - blacklist
+
+remove_card:
+  name: Elimina una tessera
+  description: >-
+    Rimuove la tessera dal registro. Dopo l'eliminazione quell'UID risulta
+    sconosciuto e non allarma più: per una tessera persa serve la blacklist,
+    non l'eliminazione.
+  fields:
+    card_id:
+      name: Id tessera
+      selector:
+        text:
+    uid:
+      name: UID
+      selector:
+        text:
+
+unlock_readers:
+  name: Sblocca i lettori
+  description: Azzera il lockout e i fallimenti consecutivi.
+
+clear_log:
+  name: Svuota il registro accessi
+  description: Cancella tutte le righe del registro. Non è reversibile.

@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Access Control",
+        "description": "Only what is needed to start is configured here. Cards, gates, hooks and thresholds are managed from the Access panel.",
+        "data": {
+          "person_entities": "People to track",
+          "nearby_zone": "Approach zone",
+          "door_lock_entity": "Lock",
+          "door_contact_entity": "Door contact",
+          "camera_entity": "Entrance camera"
+        },
+        "data_description": {
+          "nearby_zone": "When an adult enters it, the system switches to adult return.",
+          "door_contact_entity": "A second source independent of the lock: if the two disagree it is a fault or a forced entry."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Access Control is already configured."
+    }
+  },
+  "services": {
+    "scan": {
+      "name": "Evaluate a scan",
+      "description": "Injects a credential read as if it came from a reader."
+    },
+    "enroll_card": {
+      "name": "Enroll a card",
+      "description": "Adds a card to the registry or updates an existing one."
+    },
+    "set_card_state": {
+      "name": "Change card state",
+      "description": "Activate, disable or blacklist."
+    },
+    "remove_card": {
+      "name": "Delete a card",
+      "description": "Removes the card from the registry."
+    },
+    "unlock_readers": {
+      "name": "Unlock readers",
+      "description": "Clears the lockout and the consecutive failure count."
+    },
+    "clear_log": {
+      "name": "Clear the access log",
+      "description": "Deletes every row of the log."
+    }
+  }
+}

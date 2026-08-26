@@ -1,0 +1,41 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  hassfest:
+    name: Home Assistant hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Il controllo "brands" si accontenta di una cartella `brand/` con
+      # almeno `icon.png`, che l'integration porta con sé: non serve
+      # disattivarlo.
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  lint:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # versione fissata: un aggiornamento di ruff non deve far fallire la
+      # CI su codice che non è cambiato
+      - run: pip install ruff==0.16.0
+      - run: ruff check custom_components scripts
