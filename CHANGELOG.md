@@ -8,6 +8,20 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **L'elenco delle schede tornava all'inizio da solo.** Da telefono scorre in
+  orizzontale, e ogni ridisegno lo ricostruiva da zero: si riavvolgeva a ogni
+  giro di aggiornamento e a ogni volta che si premeva una voce — cioe' proprio
+  mentre la si stava guardando. Ora la posizione sopravvive al ridisegno, e la
+  scheda scelta si porta in vista se era fuori schermo
+
+### Modificato
+
+- **La barra con le schede resta in cima mentre il contenuto scorre sotto.**
+  Da telefono gli elenchi sono lunghi e per cambiare scheda bisognava
+  risalire tutta la pagina a mano
+
 ## [0.16.1] - 2026-08-27
 
 ### Corretto

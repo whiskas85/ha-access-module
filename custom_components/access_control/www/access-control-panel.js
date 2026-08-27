@@ -380,6 +380,12 @@ class AccessControlPanel extends HTMLElement {
     if (!this.shadowRoot) return;
     const d = this._data;
 
+    // Da telefono le schede scorrono in orizzontale, e ogni ridisegno
+    // ricostruisce la barra da zero: senza ricordarsi dove fosse, l'elenco
+    // tornava all'inizio da solo a ogni giro di aggiornamento e a ogni volta
+    // che si premeva una voce — cioe' proprio mentre la si stava guardando.
+    const scorrimento = this.shadowRoot.querySelector("nav")?.scrollLeft || 0;
+
     this.shadowRoot.innerHTML = `
       <style>${this._css()}</style>
       <div class="wrap">
@@ -411,6 +417,9 @@ class AccessControlPanel extends HTMLElement {
     // barra laterale e' un cassetto chiuso, e senza questo pulsante da qui
     // dentro non si torna piu' da nessuna parte se non con il tasto indietro.
     // `hass-toggle-menu` e' l'evento che quel cassetto ascolta.
+    const nav = this.shadowRoot.querySelector("nav");
+    if (nav) nav.scrollLeft = scorrimento;
+
     this.shadowRoot.querySelectorAll("[data-menu]").forEach((el) =>
       el.addEventListener("click", () =>
         this.dispatchEvent(
@@ -423,6 +432,11 @@ class AccessControlPanel extends HTMLElement {
       el.addEventListener("click", () => {
         this._tab = el.dataset.tab;
         this._render();
+        // `block: nearest` e non il centro: senza, portare in vista una
+        // scheda fuori schermo trascinerebbe anche la pagina in verticale.
+        this.shadowRoot
+          .querySelector(".tab.on")
+          ?.scrollIntoView({ inline: "center", block: "nearest" });
       }),
     );
     this._agganciaAzioni();
@@ -2204,7 +2218,14 @@ class AccessControlPanel extends HTMLElement {
               font-family:var(--paper-font-body1_-_font-family, Roboto, sans-serif); font-size:16px; }
       * { box-sizing:border-box; }
       .wrap { max-width:1180px; margin:0 auto; padding:18px; }
-      header { display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-bottom:18px; }
+      /* La barra resta in cima mentre il contenuto scorre sotto: da telefono
+         gli elenchi sono lunghi, e per cambiare scheda si tornava su a mano
+         ogni volta. Lo sfondo e' obbligatorio — senza, il contenuto si vede
+         passare attraverso. */
+      header { display:flex; flex-wrap:wrap; align-items:center; gap:14px;
+               position:sticky; top:0; z-index:5; padding:10px 0;
+               margin-bottom:8px; background:var(--primary-background-color);
+               border-bottom:1px solid var(--divider-color); }
       .titolo { display:flex; align-items:center; gap:8px; flex:1; }
       h1 { font-size:1.7rem; margin:0; }
       /* Il pulsante del menu esiste solo dove la barra laterale si chiude: la
