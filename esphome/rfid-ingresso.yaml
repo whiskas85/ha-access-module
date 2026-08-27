@@ -18,6 +18,15 @@ substitutions:
 esphome:
   name: ${nome_nodo}
   friendly_name: RFID Ingresso
+  # Questo nodo si compila dal repository (vedi README), quindi "l'ho
+  # aggiornato o no?" e' una domanda che si pone davvero — ed e' gia' costata
+  # due giri di diagnosi su correzioni che non erano mai arrivate sul pezzo.
+  # La versione compare nel log di boot e nelle info del dispositivo in Home
+  # Assistant: si legge, invece di dedurla dai sintomi.
+  # La allinea `scripts/bump.py`, non va toccata a mano.
+  project:
+    name: whiskas85.controllo-accessi
+    version: "0.11.2"
   on_boot:
     # Priorità bassa: si esegue dopo il ripristino degli interruttori, così il
     # LED mostra lo stato vero e non quello di un istante prima.
@@ -358,6 +367,12 @@ script:
             - delay: 80ms
             - switch.turn_off: buzzer
             - delay: 400ms
+      # Il giallo significa "sto aspettando". Finita l'attesa non si aspetta
+      # piu' niente, e lasciarlo acceso e' una spia che mente: chi torna al
+      # lettore lo trova giallo e crede che una decisione sia ancora in corso.
+      # `led_pronto` sceglie da solo il colore vero — verde tenue se il
+      # collegamento c'e', blu se e' caduto.
+      - script.execute: led_pronto
 
   # LED a riposo: verde molto tenue = "sono qui e leggo".
   # Tenue di proposito: è una spia che sta fuori casa tutta la notte.

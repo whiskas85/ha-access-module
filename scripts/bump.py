@@ -30,10 +30,17 @@ ROOT = Path(__file__).resolve().parent.parent
 COMPONENT = ROOT / "custom_components" / "access_control"
 MANIFEST = COMPONENT / "manifest.json"
 PANEL_JS = COMPONENT / "www" / "access-control-panel.js"
+ESPHOME_NODE = ROOT / "esphome" / "rfid-ingresso.yaml"
 CHANGELOG = ROOT / "CHANGELOG.md"
 
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 PANEL_VERSION_RE = re.compile(r'^const PANEL_VERSION = "[^"]*";$', re.MULTILINE)
+# Ancorata al blocco `project:` e non alla sola riga `version:`: in uno YAML
+# quella parola compare ovunque, e sostituire la prima che capita metterebbe
+# la versione del rilascio sopra il numero di qualcos'altro.
+PROJECT_VERSION_RE = re.compile(
+    r'(project:\n\s+name: [^\n]+\n\s+version: )"[^"]*"'
+)
 
 
 def read_version() -> str:
@@ -82,6 +89,26 @@ def write_panel_version(version: str) -> None:
     if not count:
         sys.exit(f"PANEL_VERSION non trovata in {PANEL_JS.name}")
     PANEL_JS.write_text(updated, encoding="utf-8")
+
+
+def write_esphome_version(version: str) -> None:
+    """Allinea la versione dichiarata dal nodo ESPHome.
+
+    Il nodo si compila dal repository, non da una copia locale: senza un
+    numero di versione a bordo, «l'aggiornamento e' arrivato?» si puo' solo
+    dedurre dai sintomi — ed e' gia' costato due giri di diagnosi su
+    correzioni che non erano mai state flashate. La versione compare nel log
+    di boot e nelle info del dispositivo, e va tenuta uguale a quella
+    dell'integration: due numeri diversi per lo stesso rilascio sarebbero
+    peggio di nessun numero.
+    """
+    source = ESPHOME_NODE.read_text(encoding="utf-8")
+    updated, count = PROJECT_VERSION_RE.subn(
+        lambda m: f'{m.group(1)}"{version}"', source, count=1
+    )
+    if not count:
+        sys.exit(f"project.version non trovata in {ESPHOME_NODE.name}")
+    ESPHOME_NODE.write_text(updated, encoding="utf-8")
 
 
 def update_changelog(version: str) -> bool:
@@ -176,6 +203,8 @@ def main() -> None:
     print("  manifest.json aggiornato")
     write_panel_version(target)
     print("  pannello allineato")
+    write_esphome_version(target)
+    print("  nodo ESPHome allineato")
     if had_entries:
         print("  CHANGELOG.md aggiornato")
 
@@ -183,7 +212,7 @@ def main() -> None:
         print("\n  Commit e tag saltati (--no-tag)")
         return
 
-    git("add", str(MANIFEST), str(PANEL_JS), str(CHANGELOG))
+    git("add", str(MANIFEST), str(PANEL_JS), str(ESPHOME_NODE), str(CHANGELOG))
     git("commit", "-m", f"release: v{target}")
     git("tag", "-a", f"v{target}", "-m", f"v{target}")
 

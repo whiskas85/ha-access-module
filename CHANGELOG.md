@@ -8,6 +8,26 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Il nodo ESPHome dichiara la propria versione** (`project.version`, allineata
+  da `scripts/bump.py`). Compare nel log di boot e nelle info del dispositivo
+  in Home Assistant
+  - Il nodo si compila dal repository: se una correzione non arriva sul pezzo,
+    il sintomo e' identico a quello di una correzione sbagliata. E' successo
+    due volte — con i canali del LED e con l'UID mandato come testo — e in
+    entrambi i casi il tempo se n'e' andato a cercare un bug che era gia'
+    stato corretto. Ora "e' arrivato?" si legge invece di dedurlo
+
+### Corretto
+
+- **Il LED restava giallo per sempre quando Home Assistant non rispondeva.**
+  Il giallo significa "sto aspettando": finiti i tre bip del timeout non si
+  aspetta piu' niente, e lasciarlo acceso e' una spia che mente — chi torna al
+  lettore lo trova giallo e crede che una decisione sia ancora in corso.
+  Adesso il pattern di attesa termina rimettendo il LED nello stato vero,
+  verde tenue o blu a seconda del collegamento
+
 ## [0.11.2] - 2026-08-27
 
 ### Corretto
