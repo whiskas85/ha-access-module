@@ -324,6 +324,18 @@ pn532_i2c:
             - logger.log: "Lettura disabilitata: scartata"
             - script.stop: led_censimento
             - script.execute: led_bloccato
+            # Stesso bip di qualunque altro diniego, ed e' il punto.
+            #
+            # Un lettore che non risponde sembra rotto: e' il sintomo contro
+            # cui esiste la regola "rispondere sempre, anche negando". E il
+            # silenzio qui distingueva a orecchio "sei bloccato" da ogni altro
+            # rifiuto, cioe' proprio l'informazione che il feedback non deve
+            # far trapelare: chi cicla tessere capiva di aver fatto scattare
+            # il blocco.
+            #
+            # Il LED, invece, resta rosso fisso: quello non e' il verdetto su
+            # questa tessera, e' lo stato in cui si trova il lettore.
+            - script.execute: bip_ko
           else:
             # 3. Rate limiter locale: max 3 letture ogni 10 s.
             #    Evita che una tessera appoggiata al lettore inondi l'API.
@@ -400,14 +412,25 @@ script:
       - delay: 1500ms
       - script.execute: led_pronto
 
+  # Il bip di diniego, separato dal colore.
+  #
+  # Serve a chi deve suonare "no" tenendo un LED diverso da quello standard:
+  # il lettore bloccato risponde con questo stesso bip, ma il suo rosso non e'
+  # quello breve del rifiuto — e' lo stato in cui si trova, e resta.
+  - id: bip_ko
+    mode: restart
+    then:
+      - switch.turn_on: buzzer
+      - delay: 1200ms
+      - switch.turn_off: buzzer
+
   # KO — un bip lungo + LED rosso breve
   - id: suono_ko
     mode: restart
     then:
       - script.execute: led_ko
-      - switch.turn_on: buzzer
-      - delay: 1200ms
-      - switch.turn_off: buzzer
+      - script.execute: bip_ko
+      - script.wait: bip_ko
       - delay: 500ms
       - script.execute: led_pronto
 

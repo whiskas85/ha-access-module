@@ -8,6 +8,21 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **A lettore bloccato la tessera riceveva il rosso ma nessun suono.** Ora
+  riceve lo stesso bip di diniego di qualunque altro rifiuto
+  - Un lettore che non risponde sembra rotto: e' esattamente il sintomo
+    contro cui esiste la regola "rispondere sempre, anche negando"
+  - E il silenzio violava proprio il principio che doveva proteggere. Il
+    feedback non deve far distinguere i motivi del diniego, ma "bloccato" si
+    riconosceva **dal silenzio** mentre ogni altro rifiuto suonava: chi cicla
+    tessere capiva a orecchio di aver fatto scattare il blocco
+  - Il LED resta rosso fisso e non torna al verde: quello non e' il verdetto
+    su questa tessera, e' lo stato in cui si trova il lettore
+  - Il bip di diniego e' ora uno script suo (`bip_ko`), cosi' suono e colore
+    si combinano liberamente
+
 ## [0.14.0] - 2026-08-27
 
 ### Aggiunto
