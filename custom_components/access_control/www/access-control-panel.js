@@ -42,6 +42,7 @@ const STATO_ETICHETTA = {
 // Icone Material Design Icons, inline: il pannello vive in uno shadow root e
 // non eredita il set di icone del frontend, quindi i path se li porta dietro.
 const ICONE = {
+  menu: "M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z",
   check:
     "M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m-1 14.5 7-7L16.59 8 11 13.67 7.91 10.59 6.5 12z",
   pause: "M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m1 14V8h2v8zM9 16V8h2v8z",
@@ -383,7 +384,11 @@ class AccessControlPanel extends HTMLElement {
       <style>${this._css()}</style>
       <div class="wrap">
         <header>
-          <h1>Controllo Accessi</h1>
+          <div class="titolo">
+            <button class="hamburger" data-menu="1"
+                    aria-label="Apri il menu di Home Assistant">${icona("menu")}</button>
+            <h1>Controllo Accessi</h1>
+          </div>
           <nav>
             ${TABS.map(
               (t) =>
@@ -400,6 +405,19 @@ class AccessControlPanel extends HTMLElement {
             : ""
         }</footer>
       </div>`;
+
+    // Un pannello personalizzato disegna la propria barra, e con essa si
+    // prende la responsabilita' del pulsante del menu: su schermo stretto la
+    // barra laterale e' un cassetto chiuso, e senza questo pulsante da qui
+    // dentro non si torna piu' da nessuna parte se non con il tasto indietro.
+    // `hass-toggle-menu` e' l'evento che quel cassetto ascolta.
+    this.shadowRoot.querySelectorAll("[data-menu]").forEach((el) =>
+      el.addEventListener("click", () =>
+        this.dispatchEvent(
+          new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }),
+        ),
+      ),
+    );
 
     this.shadowRoot.querySelectorAll("[data-tab]").forEach((el) =>
       el.addEventListener("click", () => {
@@ -2187,7 +2205,15 @@ class AccessControlPanel extends HTMLElement {
       * { box-sizing:border-box; }
       .wrap { max-width:1180px; margin:0 auto; padding:18px; }
       header { display:flex; flex-wrap:wrap; align-items:center; gap:14px; margin-bottom:18px; }
-      h1 { font-size:1.7rem; margin:0; flex:1; }
+      .titolo { display:flex; align-items:center; gap:8px; flex:1; }
+      h1 { font-size:1.7rem; margin:0; }
+      /* Il pulsante del menu esiste solo dove la barra laterale si chiude: la
+         soglia e' la stessa di Home Assistant, cosi' compare esattamente
+         quando serve. */
+      .hamburger { display:none; background:none; border:none; padding:8px;
+                   border-radius:50%; cursor:pointer; color:var(--primary-text-color);
+                   flex:0 0 auto; }
+      .hamburger .ico { width:26px; height:26px; }
       h2 { font-size:1.2rem; margin:0 0 12px; }
       nav { display:flex; gap:6px; flex-wrap:wrap; }
       .tab { background:none; border:none; padding:10px 18px; border-radius:20px; cursor:pointer;
@@ -2422,6 +2448,10 @@ class AccessControlPanel extends HTMLElement {
          suo contenitore invece di allargare la pagina. */
       .tabella { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
+      @media (max-width: 870px) {
+        .hamburger { display:inline-flex; }
+      }
+
       @media (max-width: 1024px) {
         .wrap { padding:14px; }
         .griglia { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
@@ -2429,7 +2459,8 @@ class AccessControlPanel extends HTMLElement {
 
       @media (max-width: 780px) {
         .wrap { padding:12px; }
-        h1 { font-size:1.45rem; width:100%; }
+        .titolo { width:100%; }
+        h1 { font-size:1.45rem; }
         /* Le schede scorrono in orizzontale invece di andare a capo su piu'
            righe, che farebbe saltare in basso il contenuto a ogni cambio. */
         nav { width:100%; overflow-x:auto; flex-wrap:nowrap; padding-bottom:4px;

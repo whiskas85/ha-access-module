@@ -8,6 +8,17 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Su schermo stretto mancava il pulsante del menu**: dal pannello non si
+  tornava piu' da nessuna parte se non con il tasto indietro del telefono
+  - Un pannello personalizzato disegna la propria barra, e con quella si
+    prende anche la responsabilita' di quel pulsante: Home Assistant non lo
+    aggiunge da fuori. Sotto la soglia in cui la barra laterale diventa un
+    cassetto chiuso, il pannello era un vicolo cieco
+  - Compare alla stessa soglia usata da Home Assistant (870 px), cosi' c'e'
+    esattamente quando la barra laterale non c'e'
+
 ## [0.16.0] - 2026-08-27
 
 ### Aggiunto
