@@ -8,6 +8,13 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- `scripts/check_api.py` era stato committato con un `if` annidato che ruff
+  segnala: la CI della 0.8.2 falliva sul file appena aggiunto per far passare
+  la CI. Nessun effetto sul funzionamento
+
+
 ## [0.8.2] - 2026-08-27
 
 ### Corretto
