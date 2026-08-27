@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-08-27
+
 ### Aggiunto
 
 - **La foto si prende dalla diretta, quando la telecamera non sa scattare.**
