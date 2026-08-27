@@ -382,6 +382,18 @@ class AccessControlPanel extends HTMLElement {
     );
   }
 
+  // Home Assistant scrive qui la parte di indirizzo dopo il pannello. E'
+  // quello che rende utile il tocco su una notifica: `/controllo-accessi/
+  // tessere` apre le tessere invece di lasciare a chi legge il compito di
+  // ritrovare la pagina da solo.
+  set route(r) {
+    const sezione = (r?.path || "").replace(/^\/+/, "");
+    if (!sezione || sezione === this._tab) return;
+    if (!TABS.some((t) => t.id === sezione)) return;
+    this._tab = sezione;
+    if (this.shadowRoot?.childElementCount) this._render();
+  }
+
   connectedCallback() {
     this._render();
     // Il registro e lo stato cambiano per conto loro — una lettura al varco
@@ -447,6 +459,10 @@ class AccessControlPanel extends HTMLElement {
         payload,
       );
       this._errore = "";
+      // Il server puo' rispondere «salvato, pero'…»: una telecamera che non
+      // scatta si salva lo stesso, ma va detto subito e non alla prima
+      // notifica senza foto.
+      if (this._data?.avviso) this._toast(this._data.avviso);
     } catch (err) {
       this._errore = err?.body?.message || err?.message || "Comando fallito";
     }

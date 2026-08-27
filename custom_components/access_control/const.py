@@ -396,6 +396,27 @@ NOTIFY_DEVICE: Final = "lettore_registrato"
 NOTIFY_DOOR_AJAR: Final = "porta_socchiusa"
 NOTIFY_DOOR_FAULT: Final = "porta_incoerente"
 
+# Dove porta il tocco sulla notifica.
+#
+# Una notifica che si apre sulla pagina sbagliata costringe a rifare a mano il
+# percorso che aveva gia' in mano: chi la tocca ha in testa una domanda sola
+# — «quale tessera?», «quale lettore?» — e la pagina deve essere quella dove
+# la risposta si vede.
+#
+# Gli esiti di una lettura portano tutti alla pagina principale: li' c'e' lo
+# stato dell'impianto, che e' cio' che si vuole guardare dopo un accesso o un
+# diniego.
+NOTIFY_DESTINAZIONE: Final[dict[str, str]] = {
+    NOTIFY_ACCESS_OK: "",
+    NOTIFY_ACCESS_KO: "",
+    NOTIFY_BLACKLIST: "",
+    NOTIFY_ALARM: "",
+    NOTIFY_ENROLLED: "tessere",
+    NOTIFY_DEVICE: "dispositivi",
+    NOTIFY_DOOR_AJAR: "varchi",
+    NOTIFY_DOOR_FAULT: "varchi",
+}
+
 NOTIFY_LABELS: Final[dict[str, str]] = {
     NOTIFY_ACCESS_OK: "Accesso consentito",
     NOTIFY_ACCESS_KO: "Accesso negato",

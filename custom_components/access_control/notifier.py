@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DOMAIN, NOTIFY_DESTINAZIONE, PANEL_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,6 +31,20 @@ def _riempi(testo: str, valori: dict[str, Any]) -> str:
     for chiave in SEGNAPOSTO:
         fuori = fuori.replace("{" + chiave + "}", str(valori.get(chiave, "")))
     return fuori
+
+
+def _destinazione(tipo: str) -> dict[str, Any]:
+    """Dove porta il tocco sulla notifica.
+
+    Due chiavi per lo stesso percorso: Android legge `clickAction`, iOS legge
+    `url`. Metterle tutte e due costa niente e evita che la notifica si apra
+    sulla schermata iniziale su meta' dei telefoni di casa.
+    """
+    sezione = NOTIFY_DESTINAZIONE.get(tipo)
+    if sezione is None:
+        return {}
+    percorso = f"/{PANEL_URL}/{sezione}" if sezione else f"/{PANEL_URL}"
+    return {"clickAction": percorso, "url": percorso}
 
 
 async def async_notify(
@@ -63,7 +77,7 @@ async def async_notify(
     valori.setdefault("ora", dt_util.now().strftime("%H:%M"))
     valori.setdefault("stato", store.system_state)
 
-    dati: dict[str, Any] = {}
+    dati: dict[str, Any] = _destinazione(tipo)
     if tipo_conf.get("alta_priorita"):
         # ttl 0 + priorità alta: la notifica passa anche col telefono in
         # standby, che per un allarme è il solo momento in cui conta.
@@ -128,9 +142,15 @@ async def async_notify_alarm_with_open(
     valori.setdefault("ora", dt_util.now().strftime("%H:%M"))
     valori.setdefault("stato", store.system_state)
 
-    dati: dict[str, Any] = {"ttl": 0, "priority": "high"}
-    if camera := (camera or store.settings.get("camera_entity")):
+    dati: dict[str, Any] = {**_destinazione("allarme"), "ttl": 0, "priority": "high"}
+    camera = camera or store.settings.get("camera_entity")
+    if camera:
         dati["image"] = f"/api/camera_proxy/{camera}"
+    elif tipo_conf.get("immagine"):
+        _LOGGER.warning(
+            "Notifica di allarme: e' richiesta la foto ma non c'e' nessuna "
+            "telecamera scelta, ne' sul lettore ne' nelle impostazioni"
+        )
     if azioni:
         dati["actions"] = azioni
 

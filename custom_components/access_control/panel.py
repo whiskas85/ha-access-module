@@ -147,6 +147,36 @@ def _dispositivi_disponibili(hass: HomeAssistant, store) -> list[dict[str, Any]]
     )
 
 
+async def _prova_camera(hass: HomeAssistant, entity_id: str) -> list[str]:
+    """Scatta subito, per non scoprire alla prima notifica che non scatta.
+
+    Non tutte le entita' `camera.` sanno produrre un fermo immagine: le
+    telecamere in sola diretta di certe integrazioni rispondono con un errore,
+    e la notifica parte senza allegato senza dire niente. Scegliere una
+    telecamera e ricevere «questa non scatta» e' l'unico momento in cui quel
+    difetto si puo' capire — dopo diventa «la foto non c'e'» e non si sa
+    perche'.
+
+    L'esito e' un avviso, non un errore: la scelta si salva lo stesso. Puo'
+    trattarsi di una telecamera spenta adesso e viva stasera, e rifiutare la
+    configurazione per un'indisponibilita' momentanea sarebbe peggio.
+    """
+    if not entity_id:
+        return []
+    from homeassistant.components import camera as camera_ha
+
+    try:
+        await camera_ha.async_get_image(hass, entity_id, timeout=10)
+    except Exception as err:  # noqa: BLE001 — qualunque guasto vale lo stesso
+        _LOGGER.warning("La telecamera %s non produce un fermo immagine: %s", entity_id, err)
+        return [
+            f"Attenzione: {entity_id} non ha restituito un fermo immagine "
+            f"({err}). La scelta e' stata salvata, ma con questa telecamera "
+            f"la foto nelle notifiche resterebbe vuota."
+        ]
+    return []
+
+
 def _nome_dispositivo(hass: HomeAssistant, store, device_id: str) -> str:
     # Condivisa con le notifiche: due funzioni separate divergono, e lo stesso
     # lettore finisce col chiamarsi in un modo a schermo e in un altro nel
@@ -323,7 +353,10 @@ class AccessStateView(HomeAssistantView):
         hass = request.app["hass"]
         if not request["hass_user"].is_admin:
             return self.json_message("Solo amministratori", 403)
-        return self.json(_snapshot(hass))
+        dati = _snapshot(hass)
+        if avvisi:
+            dati["avviso"] = " ".join(avvisi)
+        return self.json(dati)
 
 
 class AccessCommandView(HomeAssistantView):
@@ -349,6 +382,7 @@ class AccessCommandView(HomeAssistantView):
             return self.json_message("JSON non valido", 400)
 
         action = body.get("action")
+        avvisi: list[str] = []
         data = hass.data[DOMAIN]
         store = data["store"]
         coordinator = data["coordinator"]
@@ -356,7 +390,11 @@ class AccessCommandView(HomeAssistantView):
 
         try:
             if action == "set_settings":
-                await store.async_update_settings(body.get("settings") or {})
+                impostazioni = body.get("settings") or {}
+                avvisi += await _prova_camera(
+                    hass, impostazioni.get("camera_entity", "")
+                )
+                await store.async_update_settings(impostazioni)
                 coordinator.async_refresh()
 
             elif action == "add_card":
@@ -398,9 +436,9 @@ class AccessCommandView(HomeAssistantView):
                 )
 
             elif action == "set_device":
-                await store.async_update_device(
-                    body["device_id"], body.get("changes") or {}
-                )
+                cambiamenti = body.get("changes") or {}
+                avvisi += await _prova_camera(hass, cambiamenti.get("camera", ""))
+                await store.async_update_device(body["device_id"], cambiamenti)
 
             elif action == "upsert_window":
                 await store.async_upsert_window(body.get("window") or {})

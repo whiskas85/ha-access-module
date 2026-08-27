@@ -8,6 +8,30 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Toccare una notifica apre la pagina giusta.** Gli esiti di una lettura —
+  consentito, negato, blacklist, allarme — portano alla pagina principale del
+  pannello; «tessera censita» alle Tessere, «lettore registrato» ai
+  Dispositivi, «porta socchiusa» e «incoerenza sensori» ai Varchi
+  - Chi tocca una notifica ha in testa una domanda sola («quale tessera?»,
+    «quale lettore?») e la pagina deve essere quella dove la risposta si vede.
+    Prima si apriva la schermata iniziale di Home Assistant e il percorso
+    andava rifatto a mano
+  - Il pannello ora legge la sezione dall'indirizzo, quindi
+    `/controllo-accessi/tessere` funziona anche come segnalibro
+- **La telecamera scelta viene provata subito.** Non tutte le entita'
+  `camera.` sanno produrre un fermo immagine: quelle in sola diretta di certe
+  integrazioni rispondono con un errore, e la notifica parte senza allegato
+  senza dire niente. Ora scegliendola si scopre all'istante se non scatta
+  - E' un avviso, non un rifiuto: la scelta si salva lo stesso, perche' puo'
+    trattarsi di una telecamera spenta adesso e viva stasera
+
+### Corretto
+
+- Anche la notifica di allarme scrive nel log quando la foto e' richiesta e
+  non c'e' nessuna telecamera scelta
+
 ## [0.19.0] - 2026-08-27
 
 ### Aggiunto
