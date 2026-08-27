@@ -40,11 +40,13 @@ def membri(percorso: Path, classe: str) -> set[str]:
                 trovati.add(corpo.name)
         # `self.x = ...` dentro qualunque metodo
         for sotto in ast.walk(nodo):
-            if isinstance(sotto, ast.Attribute) and isinstance(
-                sotto.value, ast.Name
+            if (
+                isinstance(sotto, ast.Attribute)
+                and isinstance(sotto.value, ast.Name)
+                and sotto.value.id == "self"
+                and isinstance(sotto.ctx, ast.Store)
             ):
-                if sotto.value.id == "self" and isinstance(sotto.ctx, ast.Store):
-                    trovati.add(sotto.attr)
+                trovati.add(sotto.attr)
     return trovati
 
 
