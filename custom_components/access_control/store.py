@@ -47,6 +47,7 @@ from .const import (
     SUFFIX_ENABLE_SWITCH,
     SUFFIX_ENROLL_SERVICE,
     SUFFIX_READER_SERVICE,
+    SUFFIX_TAMPER_SENSOR,
 )
 from .models import AccessEvent, Card, detect_technology, normalize_uid
 
@@ -393,10 +394,14 @@ class AccessStore:
         indovinare il lettore sbagliato manderebbe l'esito di una porta a
         un'altra.
 
-        Vale per tutti e tre i campi che collegano il modulo al lettore: la
-        risposta acustica, la spia del censimento e l'interruttore di lettura
-        che l'allarme spegne. Nessuno dei tre ha un default sensato, e tutti e
-        tre falliscono in silenzio.
+        Vale per tutti i campi che collegano il modulo al lettore: la
+        risposta acustica, la spia del censimento, l'interruttore di lettura
+        che l'allarme spegne e il contatto di manomissione. Nessuno ha un
+        default sensato, e tutti falliscono in silenzio.
+
+        I primi due sono azioni e si cercano fra i servizi; gli altri due sono
+        entita' e si cercano fra le entita' di QUEL dispositivo, dove
+        l'omonimia non esiste e non c'e' niente da indovinare.
 
         Non sovrascrive mai un valore gia' scritto: se qualcuno ha configurato
         il campo a mano, ha ragione lui.
@@ -418,23 +423,30 @@ class AccessStore:
         # L'interruttore di lettura e' un'entita' e non un'azione, quindi si
         # cerca fra le entita' di QUESTO dispositivo: li' dentro l'omonimia
         # non esiste, e non serve indovinare niente.
-        if not device.get("enable_switch"):
-            candidati = [
-                voce.entity_id
-                for voce in er.async_entries_for_device(
-                    er.async_get(self.hass), device_id
-                )
-                if voce.entity_id.startswith("switch.")
-                and voce.entity_id.endswith(SUFFIX_ENABLE_SWITCH)
-            ]
-            if len(candidati) == 1:
-                device["enable_switch"] = candidati[0]
-                cambiato = True
-                _LOGGER.info(
-                    "Lettore %s: enable_switch impostato a %s",
-                    device_id,
-                    candidati[0],
-                )
+        da_cercare = [
+            ("enable_switch", "switch.", SUFFIX_ENABLE_SWITCH),
+            ("tamper_sensor", "binary_sensor.", SUFFIX_TAMPER_SENSOR),
+        ]
+        if any(not device.get(campo) for campo, _, _ in da_cercare):
+            voci = er.async_entries_for_device(er.async_get(self.hass), device_id)
+            for campo, dominio, suffisso in da_cercare:
+                if device.get(campo):
+                    continue
+                candidati = [
+                    voce.entity_id
+                    for voce in voci
+                    if voce.entity_id.startswith(dominio)
+                    and voce.entity_id.endswith(suffisso)
+                ]
+                if len(candidati) == 1:
+                    device[campo] = candidati[0]
+                    cambiato = True
+                    _LOGGER.info(
+                        "Lettore %s: %s impostato a %s",
+                        device_id,
+                        campo,
+                        candidati[0],
+                    )
 
         if not mancanti:
             if cambiato:

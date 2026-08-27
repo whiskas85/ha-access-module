@@ -19,6 +19,7 @@ from .evaluator import AccessEvaluator
 from .panel import async_remove_panel, async_setup_panel
 from .services import async_setup_services, async_unload_services
 from .store import AccessStore
+from .tamper import TamperWatcher
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,8 +67,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         }
     )
 
+    tamper = TamperWatcher(hass, store, evaluator)
+
     entry.async_on_unload(coordinator.async_start())
     entry.async_on_unload(enrollment.async_shutdown)
+    entry.async_on_unload(tamper.async_start())
     entry.async_on_unload(_async_subscribe_reads(hass, store, evaluator))
     entry.async_on_unload(_async_subscribe_notification_actions(hass))
 

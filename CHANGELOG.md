@@ -8,6 +8,26 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Il modulo guarda da solo il contatto di manomissione** dei lettori
+  registrati e porta l'impianto in allarme quando si apre. Il campo si compila
+  da solo come gli altri
+  - La specifica chiedeva un'automazione scritta a mano che chiamasse
+    `report_tamper`. Un impianto in cui il tamper funziona solo se qualcuno si
+    e' ricordato di armarlo e' un impianto in cui il tamper, il giorno che
+    serve, non funziona — e fallisce nel modo peggiore: aprire la scatola non
+    produce niente, identico a un contatto mai cablato
+  - Il servizio `report_tamper` resta, per un sensore che non appartiene a un
+    lettore o per una segnalazione a mano
+  - Il nodo continua a limitarsi a segnalare: la decisione di andare in
+    allarme resta nel modulo
+  - `unavailable` → `on` non fa scattare niente: e' il nodo che torna in linea
+    dichiarando lo stato in cui si trovava, non un coperchio che si apre
+- **Le caselle di spunta del pannello sono quelle di Home Assistant**
+  (`ha-checkbox` in `ha-formfield`), con ripiego su quelle del browser se i
+  componenti non sono disponibili — meglio brutte che invisibili
+
 ## [0.14.3] - 2026-08-27
 
 ### Corretto

@@ -296,7 +296,7 @@ ma non mandata in sicurezza, cioè la condizione normale di casa abitata.
 | `access_control.set_card_state` | attiva / disabilita / blacklist |
 | `access_control.remove_card` | elimina dal registro |
 | `access_control.clear_alarm` | sblocca l'allarme e riaccende i lettori |
-| `access_control.report_tamper` | segnala una manomissione (dal microswitch) |
+| `access_control.report_tamper` | segnala una manomissione a mano, o da un sensore che non appartiene a un lettore |
 | `access_control.set_reading_enabled` | accende o spegne la lettura |
 | `access_control.clear_log` | svuota il registro accessi |
 

@@ -240,9 +240,10 @@ light:
 #  Con il pull-down interno, un filo tagliato finisce basso esattamente come
 #  un coperchio aperto — e fa allarme. È il comportamento che si vuole.
 #
-#  Lato Home Assistant serve un'automazione che chiami
-#  `access_control.report_tamper` quando questo passa a `on`: il nodo segnala,
-#  non decide.
+#  Lato Home Assistant non serve nessuna automazione: il modulo guarda da solo
+#  questo contatto sui lettori registrati e porta l'impianto in allarme. Il
+#  nodo segnala, non decide — ma pretendere che qualcuno si ricordi di armare
+#  la segnalazione voleva dire un tamper che, nel giorno che serve, non c'e'.
 # ═══════════════════════════════════════════════════════════════════════════
 binary_sensor:
   # ═════════════════════════════════════════════════════════════════════════

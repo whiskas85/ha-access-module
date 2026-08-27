@@ -245,6 +245,7 @@ SUFFIX_ENROLL_SERVICE: Final = "_modo_censimento"
 # Questo e' un'entita', non un'azione: si cerca fra le entita' del
 # dispositivo, non fra i servizi.
 SUFFIX_ENABLE_SWITCH: Final = "_lettura_abilitata"
+SUFFIX_TAMPER_SENSOR: Final = "_tamper"
 
 # Registrazione automatica di un LETTORE. Cosa diversa dal censimento di una
 # tessera, e va tenuta diversa: qui interessa solo sapere quale dispositivo ha
@@ -342,6 +343,9 @@ DEFAULT_DEVICE: Final[dict] = {
     # al lettore non ha modo di sapere se la finestra e' ancora valida.
     "enroll_service": "",
     "enroll_field": "attivo",
+    # Contatto di manomissione del lettore. Il nodo segnala, non decide: e'
+    # il modulo a guardare questo sensore e a portare l'impianto in allarme.
+    "tamper_sensor": "",
     # Interruttore con cui Home Assistant spegne la lettura quando il sistema
     # va in allarme. Senza, in allarme il lettore continuerebbe a leggere e a
     # inondare l'API — che è esattamente ciò da cui l'allarme difende.
