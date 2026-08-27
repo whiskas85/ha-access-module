@@ -1,0 +1,53 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  CONFIGURAZIONE LOCALE DEL NODO — da mettere nell'add-on ESPHome
+#
+#  Copiare questo file in ESPHome come `rfid-ingresso.yaml`. È tutto quello
+#  che serve: il resto arriva dal repository.
+#
+#  ── PERCHÉ COSÌ ──
+#
+#  HACS aggiorna l'integration, non il nodo. Copiando a mano il firmware ci si
+#  ritrova prima o poi con il repository aggiornato e il dispositivo fermo a
+#  una versione precedente — e il sintomo è che una correzione «non funziona»
+#  quando in realtà non è mai arrivata sul pezzo. È già successo con lo
+#  scambio dei canali del LED.
+#
+#  Con il pacchetto remoto la configurazione locale è questo file e basta:
+#  premere «Install» in ESPHome ripesca la versione aggiornata dal repository.
+#
+#  ── I SEGRETI RESTANO QUI ──
+#
+#  Le chiavi non passano dal repository: `!secret` legge il secrets.yaml
+#  dell'add-on ESPHome, che sta sulla tua macchina e non è versionato.
+#  Servono queste voci:
+#
+#      api_key:        (openssl rand -base64 32)
+#      ota_password:
+#      ap_password:
+#      wifi_ssid:
+#      wifi_password:
+# ═══════════════════════════════════════════════════════════════════════════
+
+packages:
+  controllo_accessi:
+    url: https://github.com/whiskas85/ha-access-module
+    ref: main
+    files:
+      - esphome/rfid-ingresso.yaml
+    # `0s` = ricontrolla a ogni compilazione. Finché il firmware cambia
+    # spesso è quello che si vuole; a impianto assestato conviene puntare
+    # `ref` a un tag preciso (es. v0.10.1) e mettere `refresh: 1d`, così un
+    # aggiornamento non arriva addosso senza che tu lo abbia deciso.
+    refresh: 0s
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PERSONALIZZAZIONI LOCALI
+#
+#  Tutto ciò che si scrive qui sotto ha la precedenza sul pacchetto remoto.
+#  Serve per le differenze fra un nodo e l'altro — per esempio il secondo
+#  lettore del garage, che usa lo stesso firmware con nome e pin diversi.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# substitutions:
+#   nome_nodo: rfid-garage

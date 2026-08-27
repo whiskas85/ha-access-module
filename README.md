@@ -340,6 +340,30 @@ strada.
 
 `secrets.yaml` non è versionato. Il template è in `esphome/secrets.yaml.example`.
 
+### Come installarlo sul nodo
+
+**HACS aggiorna l'integration, non il nodo.** Copiando il firmware a mano ci
+si ritrova prima o poi col repository aggiornato e il dispositivo fermo a una
+versione precedente — e il sintomo è che una correzione «non funziona» quando
+in realtà non è mai arrivata sul pezzo.
+
+Per evitarlo, la configurazione locale del nodo può essere solo questa:
+
+```yaml
+packages:
+  controllo_accessi:
+    url: https://github.com/whiskas85/ha-access-module
+    ref: main
+    files: [esphome/rfid-ingresso.yaml]
+    refresh: 0s
+```
+
+Premere **Install** in ESPHome ripesca la versione aggiornata. I segreti
+restano nel `secrets.yaml` dell'add-on, che non passa dal repository.
+
+Il file completo con le spiegazioni è in
+[`esphome/nodo-locale.yaml.example`](esphome/nodo-locale.yaml.example).
+
 ### Il fallback locale non è implementato
 
 La specifica lo chiede al §10 e lo vieta al §2, che è marcata «non negoziabile»

@@ -8,6 +8,19 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`esphome/nodo-locale.yaml.example`: il nodo si aggiorna dal repository.**
+  HACS aggiorna l'integration, non il firmware — copiandolo a mano ci si
+  ritrova prima o poi col repository aggiornato e il dispositivo fermo a una
+  versione precedente, e il sintomo è che una correzione «non funziona»
+  quando in realtà non è mai arrivata sul pezzo
+  - Con il pacchetto remoto la configurazione locale sono cinque righe, e
+    premere «Install» in ESPHome ripesca l'ultima versione
+  - I segreti restano nel `secrets.yaml` dell'add-on: dal repository passa
+    solo il firmware
+
+
 ## [0.10.1] - 2026-08-27
 
 ### Firmware ESP32
