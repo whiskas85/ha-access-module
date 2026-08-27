@@ -8,6 +8,26 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **«Attiva» e «Notifiche attive» sono interruttori**, non caselle: per
+  acceso/spento e' il controllo giusto ed e' quello che si vede ovunque in
+  Home Assistant. Il ripiego, quando i componenti non sono disponibili, non e'
+  piu' la casella nuda del browser ma un interruttore disegnato con le
+  variabili del tema
+- **Il messaggio di una notifica e' un'area multiriga.** Ha segnaposto dentro
+  e va riletto intero prima di salvarlo, non fatto scorrere dentro una riga
+- **Il pulsante Salva compare quando c'e' qualcosa da salvare**, e finche' c'e'
+  la pagina smette di ridisegnarsi da sola: un ridisegno riscriverebbe i campi
+  con i valori salvati, buttando via il testo appena scritto
+
+### Corretto
+
+- **Il vuoto fra «Titolo» e «Messaggio».** Le etichette avevano `flex:1`, che
+  serve dentro le file ma nella colonna di una scheda le faceva crescere in
+  **altezza**: il campo restava in cima alla sua etichetta e sotto rimaneva il
+  vuoto
+
 ## [0.17.0] - 2026-08-27
 
 ### Modificato

@@ -142,12 +142,15 @@ async function attendiSpunta() {
   // cui si arriva. Si aspettano un attimo e poi si prende quello che c'e'.
   const attesa = Promise.all([
     customElements.whenDefined("ha-checkbox"),
+    customElements.whenDefined("ha-switch"),
     customElements.whenDefined("ha-formfield"),
   ]);
   const scadenza = new Promise((ok) => setTimeout(ok, 2000));
   await Promise.race([attesa, scadenza]);
   return (
-    !!customElements.get("ha-checkbox") && !!customElements.get("ha-formfield")
+    !!customElements.get("ha-checkbox") &&
+    !!customElements.get("ha-switch") &&
+    !!customElements.get("ha-formfield")
   );
 }
 
@@ -174,9 +177,36 @@ function spunta(attributi, attiva, etichetta) {
           </label>`;
 }
 
-// Vale per tutte e due le forme: `type` ce l'ha solo quella nativa.
+// Interruttore, non casella: per «acceso o spento» e' il controllo giusto,
+// ed e' quello che si vede ovunque in Home Assistant.
+//
+// Il ripiego non e' la casella nuda del browser ma una disegnata da noi con
+// le variabili del tema: i componenti di Home Assistant li prendiamo in
+// prestito da un pannello che non e' il nostro e non e' garantito che ci
+// siano. Meglio un interruttore fatto in casa che somiglia al resto, che una
+// casella grigia in mezzo a controlli che non lo sono.
+function interruttore(attributi, attiva, etichetta) {
+  const on = attiva ? "checked" : "";
+  if (_spuntaHA) {
+    return `<ha-formfield class="check">
+              <ha-switch ${attributi} ${on}></ha-switch>
+              <span slot="label">${etichetta}</span>
+            </ha-formfield>`;
+  }
+  return `<label class="check interruttore">
+            <input type="checkbox" ${attributi} ${on} />
+            <span class="binario"><span class="pallina"></span></span>
+            <span>${etichetta}</span>
+          </label>`;
+}
+
+// Vale per tutte le forme: `type` ce l'ha solo quella nativa.
 function eSpunta(el) {
-  return el.type === "checkbox" || el.localName === "ha-checkbox";
+  return (
+    el.type === "checkbox" ||
+    el.localName === "ha-checkbox" ||
+    el.localName === "ha-switch"
+  );
 }
 
 async function caricaComponentiHA() {
@@ -333,6 +363,8 @@ class AccessControlPanel extends HTMLElement {
     // Con l'editor delle azioni aperto non si ridisegna: un ridisegno
     // ricostruirebbe il componente e perderebbe la sequenza in modifica.
     if (this._configDisp) return false;
+    // Una notifica con modifiche non salvate: vale lo stesso motivo.
+    if (this._notificheSporche?.size) return false;
     const a = this.shadowRoot.activeElement;
     return !(a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName));
   }
@@ -427,6 +459,23 @@ class AccessControlPanel extends HTMLElement {
         ),
       ),
     );
+
+    // Il pulsante Salva compare quando c'e' qualcosa da salvare. Finche'
+    // c'e', la pagina smette di ridisegnarsi da sola: un ridisegno
+    // riscriverebbe i campi con i valori salvati, buttando via il testo
+    // appena scritto — e la notifica di allarme e' l'ultimo posto dove si
+    // vuole scoprire che una modifica non era stata presa.
+    this.shadowRoot.querySelectorAll("[data-notifica]").forEach((box) => {
+      const bottone = box.querySelector("[data-salva-notifica]");
+      if (!bottone) return;
+      const segna = () => {
+        this._notificheSporche = this._notificheSporche || new Set();
+        this._notificheSporche.add(box.dataset.notifica);
+        bottone.hidden = false;
+      };
+      box.addEventListener("input", segna);
+      box.addEventListener("change", segna);
+    });
 
     this.shadowRoot.querySelectorAll("[data-sottotab]").forEach((el) =>
       el.addEventListener("click", () => {
@@ -1592,7 +1641,7 @@ class AccessControlPanel extends HTMLElement {
               <b>${esc(etichetta)}</b>
               <span class="sotto"><code>${esc(chiave)}</code></span>
             </div>
-            ${spunta('data-n="attivo"', t.attivo, "Attiva")}
+            ${interruttore('data-n="attivo"', t.attivo, "Attiva")}
           </div>
           <div class="riga">
             <label>Destinatario
@@ -1604,8 +1653,12 @@ class AccessControlPanel extends HTMLElement {
           <label>Titolo
             <input data-n="titolo" value="${esc(t.titolo || "")}" /></label>
           <label>Messaggio
-            <input data-n="messaggio" value="${esc(t.messaggio || "")}" /></label>
-          <button data-salva-notifica="${esc(chiave)}">${icona("check")} Salva</button>
+            <textarea data-n="messaggio" rows="2"
+              placeholder="Testo della notifica">${esc(t.messaggio || "")}</textarea></label>
+          <button data-salva-notifica="${esc(chiave)}"
+            ${this._notificheSporche?.has(chiave) ? "" : "hidden"}>${icona(
+              "check",
+            )} Salva</button>
         </div>`;
       })
       .join("");
@@ -1614,7 +1667,7 @@ class AccessControlPanel extends HTMLElement {
       <section class="card ${n.master ? "" : "spento"}">
         <h2>Master notifiche</h2>
         <div class="riga">
-          ${spunta('id="notif-master"', n.master, "Notifiche attive")}
+          ${interruttore('id="notif-master"', n.master, "Notifiche attive")}
           <label>Destinatario generale
             ${selettore('id="notif-service"', n.service || "", "— nessuno —")}
           </label>
@@ -1889,6 +1942,7 @@ class AccessControlPanel extends HTMLElement {
         box.querySelectorAll("[data-n]").forEach((f) => {
           conf[f.dataset.n] = eSpunta(f) ? f.checked : f.value;
         });
+        this._notificheSporche?.delete(chiave);
         this._comando({
           action: "set_notifications",
           changes: { tipi: { [chiave]: conf } },
@@ -2299,9 +2353,28 @@ class AccessControlPanel extends HTMLElement {
       label.check { flex-direction:row; align-items:center; gap:8px; flex:0 0 auto; font-size:.95rem; }
       ha-formfield.check { flex:0 0 auto; --mdc-typography-body2-font-size:.95rem; }
       ha-formfield.check span[slot="label"] { display:inline-flex; align-items:center; gap:6px; }
-      input, select { padding:10px; border-radius:7px; border:1px solid var(--divider-color);
+      input, select, textarea { padding:10px; border-radius:7px; border:1px solid var(--divider-color);
                       background:var(--card-background-color); color:var(--primary-text-color); font-size:1rem;
                       font-family:inherit; }
+      /* Cresce col testo invece di scorrere dentro una riga sola: i messaggi
+         hanno segnaposto e vanno riletti tutti interi prima di salvarli. */
+      textarea { resize:vertical; min-height:64px; line-height:1.45; }
+
+      /* Interruttore di ripiego, per quando i componenti di Home Assistant
+         non sono disponibili. Usa le variabili del tema, cosi' segue chiaro e
+         scuro come tutto il resto. */
+      .interruttore { cursor:pointer; }
+      .interruttore input { position:absolute; opacity:0; width:0; height:0; }
+      .interruttore .binario { width:38px; height:22px; border-radius:11px; flex:0 0 auto;
+                               background:var(--divider-color); position:relative;
+                               transition:background .18s; }
+      .interruttore .pallina { position:absolute; top:3px; left:3px; width:16px; height:16px;
+                               border-radius:50%; background:var(--card-background-color);
+                               box-shadow:0 1px 3px rgba(0,0,0,.35); transition:transform .18s; }
+      .interruttore input:checked + .binario { background:var(--primary-color); }
+      .interruttore input:checked + .binario .pallina { transform:translateX(16px); }
+      .interruttore input:focus-visible + .binario { outline:2px solid var(--primary-color);
+                                                     outline-offset:2px; }
       button { display:inline-flex; align-items:center; gap:7px; padding:10px 16px; border-radius:7px;
                border:none; cursor:pointer; background:var(--primary-color);
                color:var(--text-primary-color,#fff); font-size:.95rem; font-family:inherit; }
@@ -2349,6 +2422,10 @@ class AccessControlPanel extends HTMLElement {
       .giorni { display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; }
       .varco { border:1px solid var(--divider-color); border-radius:8px; padding:14px; margin-bottom:12px;
                display:flex; flex-direction:column; gap:10px; }
+      /* flex:1 sulle etichette serve dentro .riga, che e' una fila. Qui la
+         direzione e' la colonna, e la stessa regola le faceva crescere in
+         ALTEZZA: da cui il vuoto fra un campo e il successivo. */
+      .varco > label { flex:0 0 auto; }
       footer { text-align:center; font-size:.78rem; color:var(--secondary-text-color); padding:14px; }
 
       /* ── nome tessera modificabile sul posto ─────────────────────────── */
