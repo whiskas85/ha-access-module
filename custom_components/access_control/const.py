@@ -220,6 +220,9 @@ ALARM_LABELS: Final[dict[str, str]] = {
 # ───────────────────────────────────────────────────────────────────────────
 #  Eventi sul bus
 # ───────────────────────────────────────────────────────────────────────────
+# Sventolato a ogni cambiamento dello stato salvato. Serve al pannello,
+# che vive nel browser e non puo' sentire il dispatcher interno.
+EVENT_UPDATED: Final = f"{DOMAIN}_updated"
 EVENT_ACCESS: Final = f"{DOMAIN}_event"
 EVENT_ALARM: Final = f"{DOMAIN}_alarm"
 EVENT_ALARM_CLEARED: Final = f"{DOMAIN}_alarm_cleared"

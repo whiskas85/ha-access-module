@@ -8,6 +8,25 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Il pannello si aggiorna quando succede qualcosa, non piu' ogni dieci
+  secondi.** Passi una tessera, apri il coperchio di un lettore, l'impianto va
+  in allarme: la pagina lo mostra subito
+  - `notify()` sventolava il cambiamento solo al dispatcher interno, che
+    arriva alle entita'. Il pannello vive nel browser e quel dispatcher non lo
+    sente: poteva solo richiedere lo stato a intervalli, cioe' mostrare per
+    qualche secondo un mondo che non esisteva piu' — proprio mentre chi guarda
+    ha appena passato la tessera e aspetta di vedere l'effetto. Ora parte
+    anche un evento sul bus, e il pannello ci si aggancia
+  - Il giro a intervalli resta come rete: se il collegamento agli eventi cade,
+    la pagina invecchia di dieci secondi invece di fermarsi per sempre
+  - Le ricariche sono smorzate: una singola lettura salva lo stato piu' volte
+    di fila, e senza smorzare sarebbero tre o quattro ricariche a raffica
+- **Il contatore delle letture di un lettore restava fermo.**
+  `async_note_reader` salvava senza avvisare nessuno: numero di letture e ora
+  dell'ultima si aggiornavano su disco e non a schermo
+
 ## [0.15.0] - 2026-08-27
 
 ### Aggiunto

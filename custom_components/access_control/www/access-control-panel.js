@@ -258,6 +258,23 @@ class AccessControlPanel extends HTMLElement {
       (ev) => this._censimentoAvvenuto(ev?.data || {}),
       "access_control_enrolled",
     );
+    // Ogni cambiamento dello stato salvato — una lettura, un allarme, una
+    // tessera spostata, un'impostazione — arriva qui. Senza, la pagina puo'
+    // solo richiedere lo stato a intervalli, e mostra per qualche secondo un
+    // mondo che non esiste piu'.
+    this._iscrizioneStato = this._hass.connection.subscribeEvents(
+      () => this._statoCambiato(),
+      "access_control_updated",
+    );
+  }
+
+  _statoCambiato() {
+    // Una singola lettura salva lo stato piu' volte di fila: senza smorzare,
+    // sarebbero tre o quattro ricariche complete a raffica.
+    clearTimeout(this._attesaRicarica);
+    this._attesaRicarica = setTimeout(() => {
+      if (this._puoRidisegnare()) this._carica();
+    }, 250);
   }
 
   _censimentoAvvenuto(dati) {
@@ -297,16 +314,16 @@ class AccessControlPanel extends HTMLElement {
 
   disconnectedCallback() {
     clearInterval(this._timer);
-    if (this._iscrizione) {
-      this._iscrizione.then((disiscrivi) => disiscrivi()).catch(() => {});
-      this._iscrizione = null;
+    clearTimeout(this._attesaRicarica);
+    for (const nome of ["_iscrizione", "_iscrizioneStato"]) {
+      if (this[nome]) {
+        this[nome].then((disiscrivi) => disiscrivi()).catch(() => {});
+        this[nome] = null;
+      }
     }
   }
 
-  _puoRinfrescare() {
-    // Durante l'enrollment si rinfresca sempre: serve il conto alla rovescia,
-    // e chi sta censendo è al lettore, non con le mani sulla tastiera.
-    if (this._data?.enrollment?.attivo) return true;
+  _puoRidisegnare() {
     // Un ridisegno azzera un trascinamento a metà e cancella quello che si
     // sta scrivendo in un campo: finché una delle due cose è in corso, la
     // pagina aspetta.
@@ -315,8 +332,17 @@ class AccessControlPanel extends HTMLElement {
     // ricostruirebbe il componente e perderebbe la sequenza in modifica.
     if (this._configDisp) return false;
     const a = this.shadowRoot.activeElement;
-    if (a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName)) return false;
-    // Fuori dall'enrollment basta un giro ogni 10 s.
+    return !(a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName));
+  }
+
+  _puoRinfrescare() {
+    // Durante l'enrollment si rinfresca sempre: serve il conto alla rovescia,
+    // e chi sta censendo è al lettore, non con le mani sulla tastiera.
+    if (this._data?.enrollment?.attivo) return true;
+    if (!this._puoRidisegnare()) return false;
+    // Il grosso degli aggiornamenti arriva dagli eventi. Questo giro resta
+    // come rete: se il collegamento agli eventi cade, la pagina invecchia di
+    // dieci secondi invece di fermarsi per sempre.
     this._tick = (this._tick || 0) + 1;
     return this._tick % 5 === 0;
   }

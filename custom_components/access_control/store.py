@@ -34,6 +34,7 @@ from .const import (
     DEFAULT_SETTINGS,
     DEFAULT_WINDOW,
     ESPHOME_DOMAIN,
+    EVENT_UPDATED,
     RESULT_ALARM,
     RESULT_BLACKLIST,
     RESULT_DENIED,
@@ -178,8 +179,17 @@ class AccessStore:
         self.notify()
 
     def notify(self) -> None:
-        """Sveglia le entità: pannello ed entità leggono lo stesso stato."""
+        """Sveglia chi guarda: entità e pannello leggono lo stesso stato.
+
+        Due canali perché i destinatari stanno in due mondi diversi. Il
+        dispatcher arriva alle entità, che sono qui dentro. Il pannello no:
+        vive nel browser, e senza l'evento sul bus può solo richiedere lo
+        stato a intervalli — cioè mostrare per qualche secondo un mondo che
+        non esiste più, proprio mentre chi guarda ha appena passato la
+        tessera e aspetta di vedere l'effetto.
+        """
         async_dispatcher_send(self.hass, SIGNAL_STATE_CHANGED)
+        self.hass.bus.async_fire(EVENT_UPDATED)
 
     # ── impostazioni ───────────────────────────────────────────────────────
 
@@ -350,7 +360,11 @@ class AccessStore:
         )
         voce["ultima"] = ora
         voce["letture"] = int(voce.get("letture") or 0) + 1
-        await self.async_save()
+        # `_and_notify`, non il solo salvataggio: il contatore delle letture e
+        # l'ora dell'ultima sono in mezzo alla pagina, e sono la prima cosa
+        # che si guarda dopo aver passato una tessera. Salvarli senza dirlo a
+        # nessuno li lasciava fermi sullo schermo fino al giro successivo.
+        await self.async_save_and_notify()
         return nuovo
 
     def seed_readers(self, coppie: list[tuple[str, str | None]]) -> None:
