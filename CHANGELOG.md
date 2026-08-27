@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-08-27
+
 ### Aggiunto
 
 - **Le release su GitHub raccontano cosa è cambiato.** Erano quelle generate
@@ -19,7 +21,6 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
     metà frase, con il rimando al file completo
   - Una versione senza voci di changelog non fa fallire il rilascio: produce
     una release scarna invece di nessuna release
-
 
 ## [0.8.3] - 2026-08-27
 
