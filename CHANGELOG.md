@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-27
+
 ### Aggiunto
 
 - **`esphome/nodo-locale.yaml.example`: il nodo si aggiorna dal repository.**
@@ -19,7 +21,6 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
     premere «Install» in ESPHome ripesca l'ultima versione
   - I segreti restano nel `secrets.yaml` dell'add-on: dal repository passa
     solo il firmware
-
 
 ## [0.10.1] - 2026-08-27
 
