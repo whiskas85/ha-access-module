@@ -8,6 +8,19 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Nell'editor delle azioni di un lettore, l'azione appena aggiunta non
+  compariva** — si rivedeva solo dopo il salvataggio, quando il valore
+  tornava dal server. `ha-selector` e' un componente controllato: disegna
+  quello che ha in `value` e si aspetta che sia chi lo ospita a ridarglielo
+  aggiornato a ogni modifica. Il pannello si teneva il nuovo valore e non
+  glielo restituiva, cosi' il riquadro continuava a disegnare quello vecchio
+  - L'azione non era persa: era gia' nello stato del pannello, ed e' per
+    questo che il salvataggio la scriveva davvero
+  - Un rimontaggio dell'editor ora riparte da quello che si sta modificando e
+    non da quello salvato, altrimenti riporterebbe indietro il lavoro a meta'
+
 ## [0.12.0] - 2026-08-27
 
 ### Aggiunto

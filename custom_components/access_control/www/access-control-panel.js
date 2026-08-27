@@ -949,7 +949,10 @@ class AccessControlPanel extends HTMLElement {
       const device = (this._data?.dispositivi || []).find(
         (x) => x.device_id === deviceId,
       );
-      const azioni = device?.azioni || [];
+      // Quello che si sta modificando ha la precedenza su quello salvato:
+      // un rimontaggio a meta' modifica riporterebbe l'editor indietro.
+      const azioni =
+        this._azioniInModifica?.[deviceId] ?? (device?.azioni || []);
       box.innerHTML = "";
 
       if (!disponibili) {
@@ -979,6 +982,12 @@ class AccessControlPanel extends HTMLElement {
         ev.stopPropagation();
         this._azioniInModifica = this._azioniInModifica || {};
         this._azioniInModifica[deviceId] = ev.detail.value;
+        // `ha-selector` e' controllato: disegna quello che ha in `value` e
+        // si aspetta che sia chi lo ospita a ridarglielo aggiornato. Senza
+        // questa riga l'azione appena aggiunta finisce nello stato del
+        // pannello ma il riquadro resta vuoto — e ricompare solo dopo il
+        // salvataggio, quando il valore torna dal server.
+        sel.value = ev.detail.value;
       });
       box.appendChild(sel);
     });
