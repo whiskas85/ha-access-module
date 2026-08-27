@@ -707,7 +707,15 @@ class AccessControlPanel extends HTMLElement {
       </section>
 
       <section class="card">
-        <h2>Come funziona</h2>
+        <div class="intestazione-card">
+          <h2>Ultime letture</h2>
+          <button class="mini" data-tab="registro">${icona("orologio")}Registro completo</button>
+        </div>
+        ${this._ultimeLetture(d.log)}
+      </section>
+
+      <details class="card blocco-spiega">
+        <summary>Come decide il sistema</summary>
         <ul class="spiega">
           <li>${icona("orologio")}<span><b>Autorizzazione</b> — le finestre
             dicono chi può entrare e quando. Fuori da ogni finestra non entra
@@ -721,32 +729,60 @@ class AccessControlPanel extends HTMLElement {
             dicono sì. Poi è il <b>lettore</b> a decidere cosa fare: il tag
             valida l'accesso, il dispositivo esegue le sue azioni.</span></li>
         </ul>
-      </section>
 
-      <section class="card">
-        <h2>Perché il sistema fa così</h2>
-        <div class="griglia">
-          ${this._kv("Master", st.master ? "acceso" : "spento")}
-          ${this._kv("Presenza recente", st.presenza ? "sì" : "no")}
-          ${this._kv("Adulto in avvicinamento", st.adulto_vicino ? "sì" : "no")}
-          ${this._kv("Errori consecutivi", sic.fallimenti || 0)}
-        </div>
-      </section>
+        <p class="nota">Adesso, nel dettaglio: il master è
+          <b>${st.master ? "acceso" : "spento"}</b>,
+          ${
+            st.presenza
+              ? "c'è <b>qualcuno in casa</b>"
+              : "<b>non c'è nessuno</b> in casa"
+          },
+          ${
+            st.adulto_vicino
+              ? "e un <b>adulto sta arrivando</b>"
+              : "e nessun adulto sta arrivando"
+          }.
+          Le letture rifiutate di fila sono
+          <b>${sic.fallimenti || 0}</b> su ${sic.soglia || 3}.</p>
+      </details>`;
+  }
 
-      <section class="card">
-        <h2>Prova una lettura</h2>
-        <p class="nota">Percorre tutta la catena — decisione, azioni del
-          lettore, registro — senza andare al varco.</p>
-        <div class="riga">
-          <input id="prova-uid" placeholder="UID" />
-          <select id="prova-varco">
-            ${(d.dispositivi || [])
-              .map((l) => `<option value="${esc(l.device_id)}">${esc(l.nome)}</option>`)
-              .join("")}
-          </select>
-          <button data-act="scan">Valuta</button>
-        </div>
-      </section>`;
+  // ── ultime letture ───────────────────────────────────────────────────
+
+  _ultimeLetture(log) {
+    // Dieci: quante ne servono per capire cosa e' appena successo. Il resto e'
+    // il registro, che sta nella sua scheda e non in mezzo allo stato.
+    const righe = (log || []).slice(0, 10);
+    if (!righe.length) {
+      return `<p class="nota">${icona("rfid", "ico-grande")}
+        <span>Nessuna lettura ancora. Passa una tessera a un lettore
+        registrato e comparirà qui.</span></p>`;
+    }
+
+    return `
+      <div class="tabella">
+        <table>
+          <thead><tr>
+            <th>Quando</th><th>Esito</th><th>Tessera</th>
+            <th>Titolare</th><th>Lettore</th>
+          </tr></thead>
+          <tbody>${righe
+            .map(
+              (r) => `
+            <tr class="esito-${esc(r.esito)}">
+              <td data-etichetta="Quando">${quando(r.timestamp)}</td>
+              <td data-etichetta="Esito"><span class="pill e-${esc(r.esito)}">${esc(
+                ESITO_ETICHETTA[r.esito] || r.esito,
+              )}</span></td>
+              <td data-etichetta="Tessera">${esc(r.card_nome || "sconosciuta")}
+                <div class="uid">${esc(r.uid || "")}</div></td>
+              <td data-etichetta="Titolare">${esc(r.person_nome || r.person || "—")}</td>
+              <td data-etichetta="Lettore">${esc(r.varco_nome || r.varco || "—")}</td>
+            </tr>`,
+            )
+            .join("")}</tbody>
+        </table>
+      </div>`;
   }
 
   _kv(k, v) {
@@ -1814,9 +1850,9 @@ class AccessControlPanel extends HTMLElement {
           <td data-etichetta="Quando">${quando(r.timestamp)}</td>
           <td data-etichetta="Esito"><span class="pill e-${esc(r.esito)}">${esc(ESITO_ETICHETTA[r.esito] || r.esito)}</span></td>
           <td data-etichetta="Tessera">${esc(r.card_nome || "sconosciuta")}<div class="uid">${esc(r.uid)}</div></td>
-          <td data-etichetta="Titolare">${esc(r.person || "—")}</td>
+          <td data-etichetta="Titolare">${esc(r.person_nome || r.person || "—")}</td>
           <td data-etichetta="Stato">${esc(STATO_ETICHETTA[r.stato_sistema] || r.stato_sistema)}</td>
-          <td data-etichetta="Varco">${esc(r.varco)}</td>
+          <td data-etichetta="Varco">${esc(r.varco_nome || r.varco || "—")}</td>
           <td data-etichetta="Motivo" class="motivo-cella">${esc(r.motivo || "")}</td>
         </tr>`,
           )
@@ -1901,6 +1937,22 @@ class AccessControlPanel extends HTMLElement {
             ? `<button data-act="sblocca">${icona("ricarica")} Sblocca adesso</button>`
             : ""
         }
+      </section>
+
+      <section class="card">
+        <h2>Prova una lettura</h2>
+        <p class="nota">Percorre tutta la catena — decisione, azioni del
+          lettore, registro — <b>senza andare al varco</b>. Serve a verificare
+          una configurazione senza doversi alzare e passare una tessera.</p>
+        <div class="riga">
+          <input id="prova-uid" placeholder="UID della tessera" />
+          <select id="prova-varco">
+            ${(d.dispositivi || [])
+              .map((l) => `<option value="${esc(l.device_id)}">${esc(l.nome)}</option>`)
+              .join("")}
+          </select>
+          <button data-act="scan">${icona("rfid")} Valuta</button>
+        </div>
       </section>
 
       <section class="card">
@@ -2450,6 +2502,16 @@ class AccessControlPanel extends HTMLElement {
              color:var(--secondary-text-color); font-size:1rem; }
       .tab.on { background:var(--primary-color); color:var(--text-primary-color, #fff); }
       .nota.avviso { color:var(--error-color,#db4437); }
+      /* La spiegazione serve una volta, non a ogni apertura della pagina:
+         chiusa resta a disposizione senza occupare lo schermo. */
+      .blocco-spiega > summary { cursor:pointer; font-size:1.2rem; font-weight:600;
+                                 list-style:none; display:flex; align-items:center; gap:8px; }
+      .blocco-spiega > summary::-webkit-details-marker { display:none; }
+      .blocco-spiega > summary::before { content:"›"; display:inline-block;
+                                         transition:transform .15s; font-size:1.3rem;
+                                         color:var(--secondary-text-color); }
+      .blocco-spiega[open] > summary::before { transform:rotate(90deg); }
+      .blocco-spiega > summary + * { margin-top:14px; }
       .sotto-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
       .sotto-nav .tab { display:inline-flex; align-items:center; gap:7px; padding:8px 16px;
                         font-size:.95rem; border:1px solid var(--divider-color); }

@@ -8,6 +8,25 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **La pagina principale mostra lo stato e le ultime dieci letture**, e non
+  molto altro
+  - Erano cinque riquadri, tre dei quali spiegazioni. «Perche' il sistema fa
+    cosi'» prometteva una risposta e consegnava quattro valori grezzi: adesso
+    e' una frase che si legge, dentro un blocco richiudibile insieme al resto
+    della spiegazione — serve una volta, non a ogni apertura della pagina
+  - «Prova una lettura» era diagnostica in mezzo allo stato: e' passata in
+    Impostazioni, dove si va quando si sta configurando qualcosa
+- **Nel registro il titolare e il lettore hanno un nome.** Restano anche gli
+  identificativi, che sono cio' che non cambia, ma una riga che dice
+  `person.marco` a `e9dee30b…` non si legge — e il registro si guarda proprio
+  quando si ha fretta
+- **L'avviso su una telecamera che non scatta distingue le due cose.** La
+  diretta puo' funzionare benissimo: a mancare e' il *fermo immagine*, che e'
+  un'altra funzione ed e' l'unica che serve alla foto di una notifica. Scritto
+  come «non funziona» faceva cercare un guasto che non c'era
+
 ## [0.20.1] - 2026-08-27
 
 ### Corretto

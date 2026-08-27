@@ -29,7 +29,7 @@ from .const import (
     TECHNOLOGIES,
     TECHNOLOGY_SECURITY,
 )
-from .nomi import nome_dispositivo
+from .nomi import nome_dispositivo, nome_persona
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,6 +147,24 @@ def _dispositivi_disponibili(hass: HomeAssistant, store) -> list[dict[str, Any]]
     )
 
 
+def _registro(hass: HomeAssistant, store) -> list[dict[str, Any]]:
+    """Il registro, con i nomi accanto agli identificativi.
+
+    Gli identificativi restano: sono loro a non cambiare quando qualcuno
+    rinomina una persona, e un registro che perde il riferimento non e' piu'
+    un registro. Ma accanto ci va il nome, perche' una riga che dice
+    `person.marco` a `e9dee30b...` non si legge — e il registro si guarda
+    proprio quando si ha fretta di capire.
+    """
+    righe = []
+    for evento in store.log[:200]:
+        riga = evento.to_dict()
+        riga["person_nome"] = nome_persona(hass, riga.get("person") or "")
+        riga["varco_nome"] = nome_dispositivo(hass, store, riga.get("varco") or "")
+        righe.append(riga)
+    return righe
+
+
 async def _prova_camera(hass: HomeAssistant, entity_id: str) -> list[str]:
     """Scatta subito, per non scoprire alla prima notifica che non scatta.
 
@@ -168,11 +186,21 @@ async def _prova_camera(hass: HomeAssistant, entity_id: str) -> list[str]:
     try:
         await camera_ha.async_get_image(hass, entity_id, timeout=10)
     except Exception as err:  # noqa: BLE001 — qualunque guasto vale lo stesso
-        _LOGGER.warning("La telecamera %s non produce un fermo immagine: %s", entity_id, err)
+        _LOGGER.warning(
+            "La telecamera %s non produce un fermo immagine: %s", entity_id, err
+        )
+        stato = hass.states.get(entity_id)
+        nome = (stato and stato.attributes.get("friendly_name")) or entity_id
+        # Il testo distingue le due cose apposta: la diretta di questa
+        # telecamera puo' funzionare benissimo, ed e' quello che si vede
+        # aprendola in Home Assistant. A mancare e' lo *scatto*, che e' un'altra
+        # funzione e l'unica che serve alla foto di una notifica. Scriverlo
+        # come «non funziona» farebbe cercare un guasto che non c'e'.
         return [
-            f"Attenzione: {entity_id} non ha restituito un fermo immagine "
-            f"({err}). La scelta e' stata salvata, ma con questa telecamera "
-            f"la foto nelle notifiche resterebbe vuota."
+            f"«{nome}» non riesce a produrre un fermo immagine ({err}). "
+            f"La diretta puo' funzionare lo stesso: e' lo scatto a mancare, "
+            f"ed e' quello che finisce nelle notifiche. La scelta e' salvata, "
+            f"ma la foto arriverebbe vuota."
         ]
     return []
 
@@ -328,7 +356,7 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             "attiva": store.device_learning_active,
             "secondi": store.device_learning_seconds_left,
         },
-        "log": [e.to_dict() for e in store.log[:200]],
+        "log": _registro(hass, store),
         "opzioni": {
             "stati_tessera": list(CARD_STATES),
             "tecnologie": list(TECHNOLOGIES),
