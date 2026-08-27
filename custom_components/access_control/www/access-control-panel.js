@@ -168,6 +168,48 @@ class AccessControlPanel extends HTMLElement {
       this._caricato = true;
       this._carica();
     }
+    this._ascoltaCensimenti();
+  }
+
+  // ── censimenti ───────────────────────────────────────────────────────
+
+  _ascoltaCensimenti() {
+    // Il censimento non finisce su questa pagina: si preme il pulsante qui e
+    // si passa la tessera al lettore, che sta fuori. Senza un aggancio agli
+    // eventi, l'unico segnale sarebbe la comparsa di una riga nell'elenco al
+    // giro di aggiornamento successivo — e per la tessera già censita, che
+    // una riga nuova non la produce, nessun segnale affatto.
+    if (this._iscrizione || !this._hass?.connection) return;
+    this._iscrizione = this._hass.connection.subscribeEvents(
+      (ev) => this._censimentoAvvenuto(ev?.data || {}),
+      "access_control_enrolled",
+    );
+  }
+
+  _censimentoAvvenuto(dati) {
+    const nome = dati.card_nome || "tessera";
+    this._toast(
+      dati.nuova
+        ? `Tessera censita: ${nome}`
+        : `${nome} era già in registro: non è stata aggiunta di nuovo`,
+    );
+    // La finestra si è chiusa e l'elenco è cambiato: si rilegge subito
+    // invece di aspettare il giro di aggiornamento. Non con l'editor delle
+    // azioni aperto, però: quello un ridisegno lo azzererebbe.
+    if (!this._configDisp) this._carica();
+  }
+
+  _toast(messaggio) {
+    // `hass-notification` è il canale dei messaggi del frontend di Home
+    // Assistant: si usa il suo, cosi' il messaggio compare dove l'utente si
+    // aspetta di vederlo e non in un riquadro tutto nostro.
+    this.dispatchEvent(
+      new CustomEvent("hass-notification", {
+        detail: { message: messaggio },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   connectedCallback() {
@@ -181,6 +223,10 @@ class AccessControlPanel extends HTMLElement {
 
   disconnectedCallback() {
     clearInterval(this._timer);
+    if (this._iscrizione) {
+      this._iscrizione.then((disiscrivi) => disiscrivi()).catch(() => {});
+      this._iscrizione = null;
+    }
   }
 
   _puoRinfrescare() {

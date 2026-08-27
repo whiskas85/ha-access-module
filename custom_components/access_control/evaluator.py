@@ -426,25 +426,36 @@ class AccessEvaluator:
         await self.enrollment.async_close("tessera letta")
 
         esistente = self.store.card_by_uid(uid)
+        nuova = esistente is None
         if esistente is not None:
             card, motivo = esistente, "tessera già censita"
         else:
             card = await self.store.async_add_card(uid=uid)
             motivo = f"censita come {card.technology_label}"
-            self.hass.bus.async_fire(
-                EVENT_ENROLLED,
-                {
-                    "uid": uid,
-                    "card_id": card.id,
-                    "card_nome": card.label,
-                    "tecnologia": card.technology,
-                    "tecnologia_label": card.technology_label,
-                    "sicurezza": card.security,
-                    "byte_uid": uid_bytes(uid),
-                    "lettore": device_id,
-                    "timestamp": dt_util.utcnow().isoformat(),
-                },
-            )
+
+        # L'evento parte in tutti e due i casi, `nuova` dice quale.
+        #
+        # Emetterlo solo per le tessere nuove lasciava senza risposta il gesto
+        # più frequente dopo il primo giro: ripassare una tessera già in
+        # registro. Il modulo faceva la cosa giusta — non la duplicava — ma
+        # non lo diceva a nessuno, e da fuori "già censita" e "non ha letto
+        # niente" erano lo stesso schermo fermo.
+        self.hass.bus.async_fire(
+            EVENT_ENROLLED,
+            {
+                "uid": uid,
+                "nuova": nuova,
+                "motivo": motivo,
+                "card_id": card.id,
+                "card_nome": card.label,
+                "tecnologia": card.technology,
+                "tecnologia_label": card.technology_label,
+                "sicurezza": card.security,
+                "byte_uid": uid_bytes(uid),
+                "lettore": device_id,
+                "timestamp": dt_util.utcnow().isoformat(),
+            },
+        )
 
         # Il bip di conferma dice a chi è al lettore che la lettura è
         # arrivata: senza, resterebbe lì ad aspettare i bip di timeout.

@@ -8,6 +8,27 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Il pannello dice cos'e' successo quando si passa una tessera al lettore**,
+  con un messaggio del frontend di Home Assistant: censita, oppure gia' in
+  registro e quindi non aggiunta
+  - Il caso senza risposta era il piu' frequente dopo il primo giro: ripassare
+    una tessera gia' censita. Il modulo faceva la cosa giusta — non la
+    duplicava — ma non lo diceva a nessuno, e da fuori "gia' censita" e "non
+    ha letto niente" erano lo stesso schermo fermo
+  - Il censimento non finisce sulla pagina: si preme il pulsante qui e si
+    passa la tessera al lettore, che sta fuori. Per questo il pannello ora si
+    aggancia all'evento `access_control_enrolled` invece di aspettare il giro
+    di aggiornamento
+
+### Modificato
+
+- `access_control_enrolled` viene emesso **anche per una tessera gia'
+  censita**, con il campo `nuova` a distinguere i due casi. Prima usciva solo
+  per le tessere nuove, quindi un'automazione non poteva accorgersi del
+  secondo caso in nessun modo
+
 ## [0.12.1] - 2026-08-27
 
 ### Corretto
