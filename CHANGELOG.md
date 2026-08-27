@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-08-27
+
 ### Aggiunto
 
 - **Il nodo ESPHome dichiara la propria versione** (`project.version`, allineata
