@@ -8,6 +8,35 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Ogni lettore ha la sua telecamera**, scelta dalla sua configurazione. La
+  telecamera generale delle impostazioni resta come ripiego
+  - Una casa con due porte ha due telecamere, e la foto della porta sbagliata
+    e' peggio di nessuna foto: fa credere di aver visto
+  - Prima esisteva solo quella generale, ed era un campo di testo sepolto in
+    Impostazioni: chi accendeva «Allega telecamera» non aveva modo di
+    scoprirlo
+- **Telecamere e servizi si scelgono da un elenco**, non si scrivono a memoria.
+  Un `entity_id` sbagliato di una lettera non da' nessun errore: semplicemente
+  non succede niente, che e' il modo peggiore in cui una configurazione puo'
+  fallire. Un valore configurato che non esiste piu' resta in elenco invece di
+  sparire al primo salvataggio
+
+### Corretto
+
+- **«Allega telecamera» senza nessuna telecamera scelta falliva in silenzio.**
+  Ora il pannello lo dice sulla notifica stessa, e il log lo scrive
+- **Nelle notifiche il titolare era `person.marco` e il lettore un
+  identificativo esadecimale.** Ora sono i nomi: «Marco», «RFID Ingresso»
+  - Un identificativo e' la cosa giusta da salvare e quella sbagliata da
+    mostrare. Il registro continua a tenere gli identificativi — sono loro a
+    non cambiare quando qualcuno rinomina una persona — ma cio' che arriva sul
+    telefono va tradotto
+  - Il nome di un lettore lo calcola ora un posto solo, condiviso fra pannello
+    e notifiche: due funzioni separate divergono, e lo stesso lettore finisce
+    col chiamarsi in due modi
+
 ## [0.18.1] - 2026-08-27
 
 ### Modificato

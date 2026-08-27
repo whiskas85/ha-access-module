@@ -57,6 +57,7 @@ from .const import (
 from .coordinator import AccessCoordinator
 from .enrollment import EnrollmentManager
 from .models import AccessEvent, Card, normalize_uid, uid_bytes
+from .nomi import nome_dispositivo, nome_persona
 from .notifier import async_notify, async_notify_alarm_with_open
 from .store import AccessStore
 
@@ -288,8 +289,12 @@ class AccessEvaluator:
         azioni.append({"action": "ACCESS_CLEAR_ALARM", "title": "Sblocca impianto"})
         await async_notify_alarm_with_open(
             self.hass,
-            {"motivo": ALARM_LABELS.get(motivo, motivo), "lettore": event.gate},
+            {
+                "motivo": ALARM_LABELS.get(motivo, motivo),
+                "lettore": self._nome_lettore(event.gate),
+            },
             azioni,
+            self._camera_lettore(event.gate),
         )
 
     async def async_set_readers_enabled(self, enabled: bool) -> None:
@@ -364,25 +369,38 @@ class AccessEvaluator:
 
     # ── notifiche ──────────────────────────────────────────────────────────
 
+    def _camera_lettore(self, device_id: str) -> str:
+        return (self.store.devices.get(device_id) or {}).get("camera", "")
+
     async def _async_notify(self, decision: Decision, event: AccessEvent) -> None:
         valori = {
             "tessera": event.card_name or "tessera sconosciuta",
-            "titolare": event.person or "senza titolare",
+            # Il nome, non l'entita': nel registro si salva `person.marco`
+            # perche' e' quello che non cambia, ma in una notifica si legge
+            # «Marco».
+            "titolare": nome_persona(self.hass, event.person) or "senza titolare",
             "lettore": self._nome_lettore(event.gate),
             "motivo": REASON_LABELS.get(event.reason, event.reason),
         }
         if decision.result == RESULT_BLACKLIST:
             # L'allarme va alla famiglia, non a chi ha la tessera in mano: al
             # lettore è arrivato un `ko` come tutti gli altri.
-            await async_notify(self.hass, NOTIFY_BLACKLIST, valori)
+            await async_notify(
+                self.hass, NOTIFY_BLACKLIST, valori, self._camera_lettore(event.gate)
+            )
         elif decision.granted:
-            await async_notify(self.hass, NOTIFY_ACCESS_OK, valori)
+            await async_notify(
+                self.hass, NOTIFY_ACCESS_OK, valori, self._camera_lettore(event.gate)
+            )
         elif decision.result == RESULT_DENIED:
-            await async_notify(self.hass, NOTIFY_ACCESS_KO, valori)
+            await async_notify(
+                self.hass, NOTIFY_ACCESS_KO, valori, self._camera_lettore(event.gate)
+            )
 
     def _nome_lettore(self, device_id: str) -> str:
-        device = self.store.devices.get(device_id) or {}
-        return device.get("nome") or device_id or "sconosciuto"
+        # Senza il registro dei dispositivi qui finiva l'identificativo
+        # grezzo: trentadue caratteri esadecimali in mezzo a un messaggio.
+        return nome_dispositivo(self.hass, self.store, device_id) or "sconosciuto"
 
     # ── apprendimento ──────────────────────────────────────────────────────
 

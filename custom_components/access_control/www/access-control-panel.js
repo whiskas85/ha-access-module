@@ -136,6 +136,38 @@ const quando = (iso) => {
 let _componentiHA = null;
 let _spuntaHA = false;
 
+// Elenco a tendina delle entita' di un dominio, con il nome leggibile.
+//
+// Meglio di un campo di testo dove scrivere `camera.ingresso` a memoria: un
+// entity_id sbagliato di una lettera non da' nessun errore, semplicemente non
+// succede niente — ed e' il modo peggiore in cui una configurazione puo'
+// fallire.
+function selettoreEntita(hass, attributi, valore, dominio, vuoto) {
+  const stati = hass?.states || {};
+  const voci = Object.keys(stati)
+    .filter((e) => e.startsWith(`${dominio}.`))
+    .sort();
+  // Un valore configurato che non esiste piu' resta in elenco: toglierlo in
+  // silenzio lo cancellerebbe al primo salvataggio, senza che nessuno abbia
+  // deciso di cancellarlo.
+  if (valore && !voci.includes(valore)) voci.unshift(valore);
+  const nome = (e) => {
+    const amichevole = stati[e]?.attributes?.friendly_name;
+    return amichevole && amichevole !== e ? `${amichevole} · ${e}` : e;
+  };
+  return `<select ${attributi}>
+      <option value="">${vuoto}</option>
+      ${voci
+        .map(
+          (e) =>
+            `<option value="${esc(e)}" ${e === valore ? "selected" : ""}>${esc(
+              nome(e),
+            )}</option>`,
+        )
+        .join("")}
+    </select>`;
+}
+
 async function attendiSpunta() {
   // I due componenti arrivano nello stesso pacchetto dell'editor, ma non e'
   // detto: dipende da cosa Home Assistant ha gia' caricato per la pagina da
@@ -1330,6 +1362,23 @@ class AccessControlPanel extends HTMLElement {
           in allarme: senza, in allarme il lettore continuerebbe a leggere e a
           inondare l'API — che è esattamente ciò da cui l'allarme difende.</p>
 
+        <h2>Foto nelle notifiche</h2>
+        <p class="nota">Quale telecamera inquadra <b>questo</b> varco. Serve
+          alle notifiche che hanno «Allega telecamera» acceso: una casa con due
+          porte ha due telecamere, e la foto della porta sbagliata è peggio di
+          nessuna foto — fa credere di aver visto.</p>
+        <div class="riga">
+          <label>Telecamera del varco
+            ${selettoreEntita(
+              this._hass,
+              'data-c="camera"',
+              l.camera || "",
+              "camera",
+              "— usa quella generale delle impostazioni —",
+            )}
+          </label>
+        </div>
+
         <button class="primario" data-salva-config="${esc(id)}">
           ${icona("check")} Salva configurazione del lettore</button>
       </section>`;
@@ -1645,6 +1694,14 @@ class AccessControlPanel extends HTMLElement {
           .join("")}
       </select>`;
 
+    // La foto si allega solo se una telecamera e' stata scelta — su questo
+    // lettore o in generale. Senza, spuntare la casella non produce niente di
+    // visibile e il difetto sembra dell'allegato: va detto dove si preme, non
+    // solo nel log.
+    const conTelecamera =
+      !!(d.impostazioni || {}).camera_entity ||
+      (d.dispositivi || []).some((l) => l.camera);
+
     const blocchi = Object.entries(tipi)
       .map(([chiave, etichetta]) => {
         const t = (n.tipi || {})[chiave] || {};
@@ -1670,6 +1727,16 @@ class AccessControlPanel extends HTMLElement {
             ${spunta('data-n="alta_priorita"', t.alta_priorita, "Alta priorità")}
             ${spunta('data-n="immagine"', t.immagine, "Allega telecamera")}
           </div>
+          ${
+            t.immagine && !conTelecamera
+              ? `<p class="nota avviso">${icona("alert")}
+                   <span><b>Nessuna telecamera scelta</b>, quindi la foto non
+                   viene allegata. Si sceglie sul singolo lettore, in
+                   <b>Dispositivi → Configura</b>, oppure una per tutti in
+                   <b>Impostazioni → Presenza e sensori</b>.
+                   <button class="mini" data-vai="dispositivi">Vai ai lettori</button></span></p>`
+              : ""
+          }
           <label>Titolo
             <input data-n="titolo" value="${esc(t.titolo || "")}" /></label>
           <label>Messaggio
@@ -1823,9 +1890,15 @@ class AccessControlPanel extends HTMLElement {
       <section class="card">
         <h2>Presenza e sensori</h2>
         <div class="riga">
-          <label>Telecamera
-            <input id="set-camera_entity" value="${esc(st.camera_entity || "")}"
-                   placeholder="camera.ingresso" /></label>
+          <label>Telecamera generale
+            ${selettoreEntita(
+              this._hass,
+              'id="set-camera_entity"',
+              st.camera_entity || "",
+              "camera",
+              "— nessuna —",
+            )}
+          </label>
           <label>Serratura
             <input id="set-door_lock_entity" value="${esc(st.door_lock_entity || "")}"
                    placeholder="lock.portone" /></label>
@@ -2360,6 +2433,7 @@ class AccessControlPanel extends HTMLElement {
       .tab { background:none; border:none; padding:10px 18px; border-radius:20px; cursor:pointer;
              color:var(--secondary-text-color); font-size:1rem; }
       .tab.on { background:var(--primary-color); color:var(--text-primary-color, #fff); }
+      .nota.avviso { color:var(--error-color,#db4437); }
       .sotto-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
       .sotto-nav .tab { display:inline-flex; align-items:center; gap:7px; padding:8px 16px;
                         font-size:.95rem; border:1px solid var(--divider-color); }

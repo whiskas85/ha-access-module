@@ -349,6 +349,11 @@ DEFAULT_DEVICE: Final[dict] = {
     # Contatto di manomissione del lettore. Il nodo segnala, non decide: e'
     # il modulo a guardare questo sensore e a portare l'impianto in allarme.
     "tamper_sensor": "",
+    # Telecamera che inquadra QUESTO varco, per la foto nelle notifiche.
+    # Vuoto = quella generale delle impostazioni. Una casa con due porte ha
+    # due telecamere, e la foto della porta sbagliata e' peggio di nessuna
+    # foto: fa credere di aver visto.
+    "camera": "",
     # Interruttore con cui Home Assistant spegne la lettura quando il sistema
     # va in allarme. Senza, in allarme il lettore continuerebbe a leggere e a
     # inondare l'API — che è esattamente ciò da cui l'allarme difende.

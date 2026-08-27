@@ -29,6 +29,7 @@ from .const import (
     TECHNOLOGIES,
     TECHNOLOGY_SECURITY,
 )
+from .nomi import nome_dispositivo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,13 +148,10 @@ def _dispositivi_disponibili(hass: HomeAssistant, store) -> list[dict[str, Any]]
 
 
 def _nome_dispositivo(hass: HomeAssistant, store, device_id: str) -> str:
-    if not device_id:
-        return ""
-    voce = store.devices.get(device_id) or {}
-    if voce.get("nome"):
-        return voce["nome"]
-    device = dr.async_get(hass).async_get(device_id)
-    return (device.name_by_user or device.name) if device else device_id
+    # Condivisa con le notifiche: due funzioni separate divergono, e lo stesso
+    # lettore finisce col chiamarsi in un modo a schermo e in un altro nel
+    # messaggio che arriva sul telefono.
+    return nome_dispositivo(hass, store, device_id)
 
 
 def _dispositivi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
@@ -181,6 +179,7 @@ def _dispositivi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
                 "azioni": voce.get("azioni") or [],
                 "reader_service": voce.get("reader_service", ""),
                 "enable_switch": voce.get("enable_switch", ""),
+                "camera": voce.get("camera", ""),
                 # Quali varchi apre, dedotto dalle sue azioni: non è un campo
                 # da tenere allineato a mano, è una conseguenza.
                 "varchi": [

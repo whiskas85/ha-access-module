@@ -37,6 +37,7 @@ async def async_notify(
     hass: HomeAssistant,
     tipo: str,
     valori: dict[str, Any] | None = None,
+    camera: str = "",
 ) -> bool:
     """Manda la notifica del tipo indicato, se è abilitata.
 
@@ -67,9 +68,22 @@ async def async_notify(
         # ttl 0 + priorità alta: la notifica passa anche col telefono in
         # standby, che per un allarme è il solo momento in cui conta.
         dati.update({"ttl": 0, "priority": "high"})
-    camera = store.settings.get("camera_entity")
-    if tipo_conf.get("immagine") and camera:
-        dati["image"] = f"/api/camera_proxy/{camera}"
+    # Prima quella del lettore, poi quella generale: una casa con due porte
+    # ha due telecamere, e la foto della porta sbagliata e' peggio di nessuna
+    # foto — fa credere di aver visto.
+    camera = camera or store.settings.get("camera_entity")
+    if tipo_conf.get("immagine"):
+        if camera:
+            dati["image"] = f"/api/camera_proxy/{camera}"
+        else:
+            # Chiedere la foto senza aver scelto la telecamera mandava la
+            # notifica senza allegato e senza dire niente: da fuori sembra un
+            # difetto dell'allegato, non una configurazione che manca.
+            _LOGGER.warning(
+                "Notifica %s: e' richiesta la foto ma non c'e' nessuna "
+                "telecamera scelta nelle impostazioni del modulo",
+                tipo,
+            )
 
     payload: dict[str, Any] = {
         "title": _riempi(tipo_conf.get("titolo", ""), valori),
@@ -91,6 +105,7 @@ async def async_notify_alarm_with_open(
     hass: HomeAssistant,
     valori: dict[str, Any],
     azioni: list[dict[str, str]],
+    camera: str = "",
 ) -> bool:
     """Notifica di allarme, con i pulsanti per aprire comunque dal telefono.
 
@@ -114,7 +129,7 @@ async def async_notify_alarm_with_open(
     valori.setdefault("stato", store.system_state)
 
     dati: dict[str, Any] = {"ttl": 0, "priority": "high"}
-    if camera := store.settings.get("camera_entity"):
+    if camera := (camera or store.settings.get("camera_entity")):
         dati["image"] = f"/api/camera_proxy/{camera}"
     if azioni:
         dati["actions"] = azioni
