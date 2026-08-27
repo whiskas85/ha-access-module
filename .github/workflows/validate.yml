@@ -39,3 +39,26 @@ jobs:
       # CI su codice che non è cambiato
       - run: pip install ruff==0.16.0
       - run: ruff check custom_components scripts
+
+  api:
+    name: Coerenza API interne
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # Ruff non vede un rinomino lasciato a meta': `coordinator.is_armed` e'
+      # un accesso ad attributo lecito fino a runtime, e diventa un 500 dentro
+      # la vista HTTP. Questo lo prende prima.
+      - run: python scripts/check_api.py
+
+  js:
+    name: Sintassi del pannello
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --check custom_components/access_control/www/access-control-panel.js

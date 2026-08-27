@@ -241,7 +241,10 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
         "stato": {
             "sistema": store.system_state,
             "motivo": store.state_reason,
-            "armato": coordinator.is_armed,
+            # Armato = una finestra ammette qualcuno E non siamo in
+            # allarme: sono le due macchine messe insieme, ed e' la
+            # domanda che il pannello mostra in cima.
+            "armato": coordinator.is_open and not store.in_alarm,
             "master": bool(store.settings.get("master", True)),
             "porta": coordinator.door_status(),
             "presenza": coordinator.presence_recent(),
@@ -433,7 +436,8 @@ class AccessCommandView(HomeAssistantView):
                 await store.async_remove_gate(body["gate_id"])
 
             elif action == "unlock_readers":
-                await store.async_unlock_readers()
+                await store.async_clear_alarm()
+                await data["evaluator"].async_set_readers_enabled(True)
 
             elif action == "clear_log":
                 await store.async_clear_log()

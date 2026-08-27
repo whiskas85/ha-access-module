@@ -8,6 +8,31 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Il pannello restava su «Impossibile leggere lo stato» e nessuna scheda
+  funzionava.** Tre regressioni introdotte dalla 0.8.0, tutte mie:
+  - `coordinator.is_armed` era stato rinominato in `is_open`, ma il pannello
+    lo chiamava ancora: `AttributeError` dentro la vista HTTP, quindi 500 su
+    ogni lettura di stato. Ruff non poteva vederlo — è un accesso ad
+    attributo, lecito fino a runtime
+  - stessa cosa per `store.async_unlock_readers()`, sostituito da
+    `async_clear_alarm()`
+  - `customElements.define` non era protetto. Da quando l'URL del modulo porta
+    la versione, lo stesso file può essere caricato due volte nella stessa
+    pagina — la copia in cache e quella nuova — e il secondo `define` solleva,
+    facendo fallire l'intero modulo
+
+### Aggiunto
+
+- **`scripts/check_api.py`**, che confronta gli attributi usati su store,
+  coordinator ed evaluator con quelli davvero definiti, e gira in CI. È il
+  controllo che mancava: un rinomino lasciato a metà non rompeva né il lint né
+  la compilazione, si vedeva solo come «Impossibile leggere lo stato» senza
+  alcun indizio su cosa fosse stato rinominato
+- La CI controlla anche la sintassi del pannello con `node --check`
+
+
 ## [0.8.1] - 2026-08-27
 
 ### Documentazione

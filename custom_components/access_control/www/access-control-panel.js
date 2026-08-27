@@ -2190,4 +2190,11 @@ class AccessControlPanel extends HTMLElement {
   }
 }
 
-customElements.define("access-control-panel", AccessControlPanel);
+// Il define va protetto: l'URL del modulo porta la versione, quindi lo
+// stesso file puo' essere caricato due volte nella stessa pagina — la copia
+// in cache e quella nuova. Un secondo define solleva, e sollevare qui fa
+// fallire l'intero modulo: il pannello resta quello vecchio e non si capisce
+// perche'. Vince il primo caricato; per prendere il nuovo basta ricaricare.
+if (!customElements.get("access-control-panel")) {
+  customElements.define("access-control-panel", AccessControlPanel);
+}
