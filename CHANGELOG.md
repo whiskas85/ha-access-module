@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-27
+
 ### Aggiunto
 
 - **In allarme il lettore si blocca davvero, e resta bloccato dopo un
