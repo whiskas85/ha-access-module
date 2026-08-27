@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-08-27
+
 ### Modificato
 
 - **L'interruttore del master notifiche sta in alto a destra**, all'altro capo
