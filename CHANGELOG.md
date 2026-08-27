@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-27
+
 ### Corretto
 
 - **Nell'editor delle azioni di un lettore, l'azione appena aggiunta non
