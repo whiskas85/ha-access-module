@@ -8,6 +8,10 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- Refuso nel pannello: «scegliilo» → «sceglilo»
+
 ## [0.14.2] - 2026-08-27
 
 ### Corretto

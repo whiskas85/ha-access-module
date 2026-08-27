@@ -908,7 +908,7 @@ class AccessControlPanel extends HTMLElement {
       </section>
 
       <section class="card">
-        <h2>…oppure scegliilo dall'elenco</h2>
+        <h2>…oppure sceglilo dall'elenco</h2>
         <div class="cerca-riga">
           ${icona("cerca")}
           <input id="cerca-disp" placeholder="Cerca un dispositivo per nome, marca o modello…"
