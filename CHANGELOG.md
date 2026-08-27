@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-08-27
+
 ### Corretto
 
 - **Il pannello non riusciva piu' a leggere lo stato** («Impossibile leggere lo
