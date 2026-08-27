@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-27
+
 ### Aggiunto
 
 - **Scheda Persone.** I ruoli — bambino, adulto, togli — si assegnano da li',
