@@ -8,6 +8,23 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Annullato lo scambio dei canali del LED introdotto nella 0.10.1: era
+  sbagliato.** La mappatura della 0.10.0 era già corretta, e lo scambio l'ha
+  rotta. Verificato accendendo un canale alla volta dall'entità `light` e
+  guardando il LED: `canale_r` sul GPIO26 dava verde, quindi il rosso sta sul
+  GPIO25 e le marcature R/G/B del LED sono corrette
+  - L'errore veniva da una diagnosi fatta sul firmware bicolore della 0.9.0 e
+    applicata a quello RGB della 0.10.0, che aveva già un'altra
+    corrispondenza fra pin e canali. Due build diverse, stessa etichetta sui
+    pulsanti, conclusione sbagliata
+  - Il commento nel file ora dice che il cablaggio è **verificato accendendo
+    un canale alla volta**, e distingue le due cose che si confondono: i nomi
+    dei fili non corrispondono ai canali (il filo verde porta il rosso), ma la
+    serigrafia R/G/B sì
+
+
 ## [0.11.0] - 2026-08-27
 
 ### Aggiunto
