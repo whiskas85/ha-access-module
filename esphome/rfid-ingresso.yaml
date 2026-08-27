@@ -139,14 +139,23 @@ switch:
 # ═══════════════════════════════════════════════════════════════════════════
 #  LED di stato — RGB a CATODO COMUNE
 #
-#  ⚠️ I COLORI DEI FILI NON CORRISPONDONO AI CANALI. Il filo VERDE porta il
-#     ROSSO. Sbagliare qui non rompe niente ma fa impazzire in fase di prova,
-#     quindi la tabella va letta e non intuita:
+#  ⚠️ LA SERIGRAFIA DEL LED È SBAGLIATA: R e G sono invertite.
+#
+#     Verificato sul pezzo, non dedotto: pilotando il solo GPIO26 si accende
+#     il ROSSO, e il solo GPIO25 il VERDE — mentre le marcature dicono il
+#     contrario. Il blu invece è corretto: se fosse una rotazione dei tre
+#     canali, GPIO26 avrebbe dato blu.
+#
+#     Quindi il cablaggio fisico è questo, e NON va cambiato — è la mappatura
+#     qui sotto a tenerne conto:
 #
 #        −  catodo comune   filo GIALLO  →  GND
-#        R  rosso           filo VERDE   →  220Ω  →  GPIO25
-#        G  verde           filo BLU     →  220Ω  →  GPIO26
-#        B  blu             filo VIOLA   →  220Ω  →  GPIO27
+#        (marcato R) verde  →  220Ω  →  GPIO25   ma pilota il VERDE
+#        (marcato G) blu    →  220Ω  →  GPIO26   ma pilota il ROSSO
+#        (marcato B) viola  →  220Ω  →  GPIO27   pilota il blu, corretto
+#
+#     Fidarsi delle marcature invece che della prova, la prossima volta, vuol
+#     dire rifare lo stesso giro di diagnosi da capo.
 #
 #  Le resistenze vanno messe comunque, anche se il LED sembra averle a bordo:
 #  una in più lo rende appena più tenue, una in meno brucia il LED o il pin.
@@ -158,11 +167,13 @@ switch:
 #  `inverted: true` su ciascun output.
 # ═══════════════════════════════════════════════════════════════════════════
 output:
-  - platform: ledc
-    pin: GPIO25
-    id: canale_r
+  # I pin sono incrociati apposta rispetto alle marcature del LED: `canale_r`
+  # significa "quello che accende il rosso", e sul pezzo è il GPIO26.
   - platform: ledc
     pin: GPIO26
+    id: canale_r
+  - platform: ledc
+    pin: GPIO25
     id: canale_g
   - platform: ledc
     pin: GPIO27

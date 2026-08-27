@@ -8,6 +8,19 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Firmware ESP32
+
+- **Corretta la mappatura dei canali del LED: rosso e verde erano invertiti.**
+  La serigrafia del LED è sbagliata — pilotando il solo GPIO26 si accende il
+  rosso e il solo GPIO25 il verde, mentre le marcature dicono il contrario.
+  Il blu è corretto: se fosse una rotazione dei tre canali, GPIO26 avrebbe
+  dato blu invece che rosso
+  - **Il cablaggio fisico non cambia**: a essere incrociata è la mappatura nel
+    firmware. Un LED già montato nella scatola non va toccato
+  - Il commento nel file dice che è verificato sul pezzo e non dedotto, così
+    la prossima volta non si riparte dalle marcature per rifare lo stesso giro
+
+
 ## [0.10.0] - 2026-08-27
 
 ### Firmware ESP32
