@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-27
+
 ### Firmware ESP32
 
 - **LED di stato RGB a tre canali** su GPIO25/26/27, catodo comune. La tabella
@@ -23,7 +25,6 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
   - Il LED segue `on_client_connected` / `on_client_disconnected`: cambia
     nell'istante in cui il collegamento cade, non al giro di controllo dopo
 - Pulsante di prova anche per il blu
-
 
 ## [0.9.0] - 2026-08-27
 
