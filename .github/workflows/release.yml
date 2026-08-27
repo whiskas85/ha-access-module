@@ -24,7 +24,18 @@ jobs:
           fi
           echo "Tag e manifest allineati: $TAG"
 
+      - name: Prepara le note dal CHANGELOG
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          python scripts/note_release.py "$TAG" > NOTE.md
+          echo "--- note della release ---"
+          cat NOTE.md
+
       - name: Crea la release
         uses: softprops/action-gh-release@v2
         with:
+          # Il corpo viene dal CHANGELOG; `generate_release_notes` ci accoda
+          # sotto il confronto fra i tag. Senza il primo, con un repo a un solo
+          # autore e senza pull request restava solo il link.
+          body_path: NOTE.md
           generate_release_notes: true

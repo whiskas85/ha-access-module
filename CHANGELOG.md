@@ -8,6 +8,19 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Le release su GitHub raccontano cosa è cambiato.** Erano quelle generate
+  automaticamente: con un repo a un solo autore e senza pull request si
+  riducevano al link «Full Changelog», che dice cosa confrontare ma non cosa è
+  successo. Ora il corpo viene dalla sezione del CHANGELOG per quella
+  versione, col confronto fra i tag accodato sotto
+  - Una sezione molto lunga viene tagliata a un confine di categoria, non a
+    metà frase, con il rimando al file completo
+  - Una versione senza voci di changelog non fa fallire il rilascio: produce
+    una release scarna invece di nessuna release
+
+
 ## [0.8.3] - 2026-08-27
 
 ### Corretto
