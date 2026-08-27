@@ -8,6 +8,17 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **L'interruttore del master notifiche sta in alto a destra**, all'altro capo
+  del titolo della scheda: e' il posto in cui lo si cerca, ed e' dove Home
+  Assistant mette quello delle sue schede
+- **Gli interruttori di attivazione non hanno piu' l'etichetta accanto.** Dove
+  il titolo della scheda dice gia' di cosa si tratta — «Master notifiche»,
+  oppure il nome della singola notifica — ripeterlo era una parola in piu' da
+  leggere che non aggiungeva niente. Resta come `aria-label`, per chi usa un
+  lettore di schermo e il titolo accanto non ce l'ha
+
 ## [0.18.0] - 2026-08-27
 
 ### Modificato

@@ -185,8 +185,23 @@ function spunta(attributi, attiva, etichetta) {
 // prestito da un pannello che non e' il nostro e non e' garantito che ci
 // siano. Meglio un interruttore fatto in casa che somiglia al resto, che una
 // casella grigia in mezzo a controlli che non lo sono.
-function interruttore(attributi, attiva, etichetta) {
+function interruttore(attributi, attiva, etichetta, aria = "") {
   const on = attiva ? "checked" : "";
+
+  // Senza etichetta: dove il titolo della scheda dice gia' di cosa si tratta,
+  // ripeterlo accanto all'interruttore e' una parola in piu' da leggere che
+  // non aggiunge niente. Resta pero' per chi usa un lettore di schermo, che
+  // il titolo accanto non ce l'ha.
+  if (!etichetta) {
+    const descrizione = esc(aria || "Attiva");
+    return _spuntaHA
+      ? `<ha-switch ${attributi} ${on} aria-label="${descrizione}"></ha-switch>`
+      : `<label class="check interruttore" title="${descrizione}">
+           <input type="checkbox" ${attributi} ${on} aria-label="${descrizione}" />
+           <span class="binario"><span class="pallina"></span></span>
+         </label>`;
+  }
+
   if (_spuntaHA) {
     return `<ha-formfield class="check">
               <ha-switch ${attributi} ${on}></ha-switch>
@@ -1641,7 +1656,12 @@ class AccessControlPanel extends HTMLElement {
               <b>${esc(etichetta)}</b>
               <span class="sotto"><code>${esc(chiave)}</code></span>
             </div>
-            ${interruttore('data-n="attivo"', t.attivo, "Attiva")}
+            ${interruttore(
+              'data-n="attivo"',
+              t.attivo,
+              "",
+              `Attiva la notifica ${etichetta}`,
+            )}
           </div>
           <div class="riga">
             <label>Destinatario
@@ -1665,9 +1685,16 @@ class AccessControlPanel extends HTMLElement {
 
     return `
       <section class="card ${n.master ? "" : "spento"}">
-        <h2>Master notifiche</h2>
+        <div class="intestazione-card">
+          <h2>Master notifiche</h2>
+          ${interruttore(
+            'id="notif-master"',
+            n.master,
+            "",
+            "Attiva tutte le notifiche",
+          )}
+        </div>
         <div class="riga">
-          ${interruttore('id="notif-master"', n.master, "Notifiche attive")}
           <label>Destinatario generale
             ${selettore('id="notif-service"', n.service || "", "— nessuno —")}
           </label>
@@ -2324,6 +2351,11 @@ class AccessControlPanel extends HTMLElement {
                    flex:0 0 auto; }
       .hamburger .ico { width:26px; height:26px; }
       h2 { font-size:1.2rem; margin:0 0 12px; }
+      /* Titolo a sinistra, interruttore all'altro capo: e' il posto in cui lo
+         si cerca, ed e' dove Home Assistant mette quello delle sue schede. */
+      .intestazione-card { display:flex; align-items:center; justify-content:space-between;
+                           gap:12px; margin-bottom:12px; }
+      .intestazione-card h2 { margin:0; }
       nav { display:flex; gap:6px; flex-wrap:wrap; }
       .tab { background:none; border:none; padding:10px 18px; border-radius:20px; cursor:pointer;
              color:var(--secondary-text-color); font-size:1rem; }
