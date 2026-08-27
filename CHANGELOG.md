@@ -8,6 +8,13 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Il pannello non riusciva piu' a leggere lo stato** («Impossibile leggere lo
+  stato»): nella 0.20.0 il blocco che aggiunge l'avviso alla risposta era
+  finito nella lettura dello stato invece che nel comando, e li' la variabile
+  degli avvisi non esiste. Ogni lettura falliva
+
 ## [0.20.0] - 2026-08-27
 
 ### Aggiunto

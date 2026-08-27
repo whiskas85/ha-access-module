@@ -353,10 +353,7 @@ class AccessStateView(HomeAssistantView):
         hass = request.app["hass"]
         if not request["hass_user"].is_admin:
             return self.json_message("Solo amministratori", 403)
-        dati = _snapshot(hass)
-        if avvisi:
-            dati["avviso"] = " ".join(avvisi)
-        return self.json(dati)
+        return self.json(_snapshot(hass))
 
 
 class AccessCommandView(HomeAssistantView):
@@ -494,4 +491,9 @@ class AccessCommandView(HomeAssistantView):
         except ValueError as err:
             return self.json_message(str(err), 400)
 
-        return self.json(_snapshot(hass))
+        dati = _snapshot(hass)
+        if avvisi:
+            # «Salvato, pero'…»: non e' un errore, quindi non e' un codice di
+            # errore. Ma non e' nemmeno silenzio.
+            dati["avviso"] = " ".join(avvisi)
+        return self.json(dati)
