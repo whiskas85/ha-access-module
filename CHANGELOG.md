@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-27
+
 ### Modificato
 
 - **La pagina principale mostra lo stato e le ultime dieci letture**, e non
