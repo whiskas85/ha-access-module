@@ -8,6 +8,25 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Firmware ESP32
+
+- **Il tamper è cablato fail-safe: manomissione = circuito aperto.** Con
+  l'allarme a contatto chiuso sarebbe bastato tranciare il cavetto per
+  disattivarlo in silenzio — cioè la prima cosa che farebbe chi vuole aprire
+  la scatola. Ora il pin ha il pull-down interno, quindi **un filo staccato
+  finisce basso esattamente come un coperchio aperto**, e fa allarme
+  - La regola di montaggio vale qualunque resistenza abbia a bordo il modulo:
+    il coperchio chiuso deve lasciare S alto
+  - Aggiunto anche un `delayed_off`: un microswitch rimbalza, e senza quello
+    chiudere il coperchio generava allarmi fantasma
+- **LED di stato bicolore verde/rosso** su GPIO25 e GPIO26 al posto dell'RGB a
+  tre canali. Verde tenue a riposo, verde all'ok, rosso al ko, rosso fisso a
+  lettore bloccato — e **giallo mentre aspetta la risposta**, che non è né un
+  sì né un no: restare sul verde farebbe credere che sia già andata
+  - Tre pulsanti di prova per i colori, per accorgersi che bianco e grigio
+    sono invertiti prima di montare tutto nella scatola
+
+
 ## [0.8.4] - 2026-08-27
 
 ### Aggiunto

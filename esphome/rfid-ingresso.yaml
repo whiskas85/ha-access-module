@@ -130,43 +130,66 @@ switch:
     turn_off_action:
       - script.execute: led_bloccato
 
-# ───────────────────────────────────────────────────────────────────────────
-#  LED di stato — RGB su GPIO25/26/27
+# ═══════════════════════════════════════════════════════════════════════════
+#  LED di stato — bicolore verde/rosso a CATODO COMUNE
 #
-#  Scelti perché sono uscite pulite su ESP32: niente strapping all'avvio,
-#  nessun conflitto con il WiFi. Con LED a catodo comune; per l'anodo comune
-#  invertire con `inverted: true` sui tre output.
-# ───────────────────────────────────────────────────────────────────────────
+#  Cablaggio:  nero   → GND
+#              bianco → resistenza 220Ω → GPIO25
+#              grigio → resistenza 220Ω → GPIO26
+#
+#  Le resistenze vanno messe comunque, anche se il LED sembra averle a bordo:
+#  una in più lo rende appena più tenue, una in meno brucia il LED o il pin.
+#
+#  Verde e rosso accesi insieme fanno giallo — è il terzo colore, e serve per
+#  "sto aspettando", che non è né un sì né un no.
+#
+#  25 e 26 sono uscite pulite su ESP32: niente strapping all'avvio, nessun
+#  conflitto con il WiFi.
+#
+#  ── SE IL LED È AD ANODO COMUNE ──
+#  Il filo nero va a 3V3 invece che a GND, e qui si aggiunge `inverted: true`
+#  sotto ciascun output: i pin devono tirare a massa invece che alimentare.
+#
+#  ── SE È UN RGB A TRE COLORI ──
+#  Terzo output su GPIO27 e si torna a `light: platform: rgb`.
+# ═══════════════════════════════════════════════════════════════════════════
 output:
   - platform: ledc
     pin: GPIO25
-    id: led_r
+    id: led_verde
   - platform: ledc
     pin: GPIO26
-    id: led_g
-  - platform: ledc
-    pin: GPIO27
-    id: led_b
+    id: led_rosso
 
-light:
-  - platform: rgb
-    name: "LED stato"
-    id: led_stato
-    red: led_r
-    green: led_g
-    blue: led_b
-    restore_mode: ALWAYS_OFF
-
-# ───────────────────────────────────────────────────────────────────────────
-#  TAMPER — predisposto, non ancora cablato
+# ═══════════════════════════════════════════════════════════════════════════
+#  TAMPER
 #
-#  Il microswitch va fra GPIO32 e GND. Finché non c'è, il pull-up interno
-#  tiene l'ingresso alto e il sensore resta a riposo.
+#  Modulo a 3 fili:  +  →  3V3  (NON 5V: i GPIO dell'ESP32 non tollerano i 5V)
+#                    −  →  GND
+#                    S  →  GPIO32
+#
+#  ⚠️ IL VERSO CONTA, E NON È SOLO ESTETICA.
+#
+#  Manomissione = circuito APERTO, mai chiuso. Se l'allarme scattasse a
+#  contatto chiuso, basterebbe tranciare il cavetto per disattivare il tamper
+#  in silenzio — cioè la prima cosa che farebbe chi vuole aprire la scatola.
+#
+#  Da qui la regola di montaggio, che vale qualunque sia la resistenza a
+#  bordo del modulo:
+#
+#      IL COPERCHIO CHIUSO DEVE LASCIARE S ALTO.
+#
+#  Se il modulo porta S alto quando premuto, il coperchio lo preme.
+#  Se lo porta basso, il coperchio lo lascia libero.
+#  In entrambi i casi: chiuso = alto, aperto = basso.
+#
+#  Con il pull-down interno, un filo tagliato finisce basso esattamente come
+#  un coperchio aperto — e fa allarme. È il comportamento che si vuole.
 #
 #  Lato Home Assistant serve un'automazione che chiami
-#  `access_control.report_tamper` quando questo passa a `on`. È di proposito
-#  fuori dal firmware: il nodo segnala, non decide.
-# ───────────────────────────────────────────────────────────────────────────
+#  `access_control.report_tamper` quando questo passa a `on`: il nodo segnala,
+#  non decide.
+# ═══════════════════════════════════════════════════════════════════════════
 binary_sensor:
   - platform: gpio
     name: "Tamper"
@@ -176,10 +199,16 @@ binary_sensor:
       number: GPIO32
       mode:
         input: true
-        pullup: true
+        # Pull-down, non pull-up: è ciò che fa risultare "aperto" anche un
+        # filo staccato, invece di lasciarlo flottante a dire quel che capita.
+        pulldown: true
+      # Pin basso (aperto o tranciato) → sensore ON → manomissione.
       inverted: true
     filters:
+      # Un microswitch rimbalza: senza questo, chiudere il coperchio
+      # genererebbe un paio di allarmi fantasma.
       - delayed_on: 50ms
+      - delayed_off: 200ms
 
 pn532_i2c:
   update_interval: 500ms
@@ -215,6 +244,7 @@ pn532_i2c:
                 condition:
                   lambda: 'return id(scan_count) <= 3;'
                 then:
+                  - script.execute: led_attesa
                   - script.execute: attesa_ha
                   # ═══════════════════════════════════════════════════════
                   #  4. Evento PROPRIO, non `homeassistant.tag_scanned`.
@@ -255,12 +285,7 @@ script:
   - id: suono_ok
     mode: restart
     then:
-      - light.turn_on:
-          id: led_stato
-          red: 0%
-          green: 100%
-          blue: 0%
-          brightness: 100%
+      - script.execute: led_ok
       - switch.turn_on: buzzer
       - delay: 60ms
       - switch.turn_off: buzzer
@@ -275,12 +300,7 @@ script:
   - id: suono_ko
     mode: restart
     then:
-      - light.turn_on:
-          id: led_stato
-          red: 100%
-          green: 0%
-          blue: 0%
-          brightness: 100%
+      - script.execute: led_ko
       - switch.turn_on: buzzer
       - delay: 1200ms
       - switch.turn_off: buzzer
@@ -321,25 +341,51 @@ script:
           condition:
             switch.is_on: lettura_abilitata
           then:
-            - light.turn_on:
-                id: led_stato
-                red: 0%
-                green: 100%
-                blue: 0%
-                brightness: 8%
+            - output.set_level:
+                id: led_verde
+                level: 8%
+            - output.turn_off: led_rosso
           else:
             - script.execute: led_bloccato
+
+  # Verde pieno: accesso consentito
+  - id: led_ok
+    mode: restart
+    then:
+      - output.set_level:
+          id: led_verde
+          level: 100%
+      - output.turn_off: led_rosso
+
+  # Rosso pieno: rifiutato
+  - id: led_ko
+    mode: restart
+    then:
+      - output.turn_off: led_verde
+      - output.set_level:
+          id: led_rosso
+          level: 100%
+
+  # Giallo: sto aspettando la risposta. Non è né un sì né un no, e il LED lo
+  # dice invece di restare sul verde e far credere che sia già andata.
+  - id: led_attesa
+    mode: restart
+    then:
+      - output.set_level:
+          id: led_verde
+          level: 60%
+      - output.set_level:
+          id: led_rosso
+          level: 60%
 
   # LED bloccato: rosso fisso, il segnale che il lettore non legge più
   - id: led_bloccato
     mode: restart
     then:
-      - light.turn_on:
-          id: led_stato
-          red: 100%
-          green: 0%
-          blue: 0%
-          brightness: 60%
+      - output.turn_off: led_verde
+      - output.set_level:
+          id: led_rosso
+          level: 60%
 
 button:
   - platform: template
@@ -358,6 +404,21 @@ button:
     name: "Test suono allarme"
     on_press:
       - script.execute: suono_allarme
+
+  # Prova dei colori senza passare una tessera: serve a capire subito se
+  # bianco e grigio sono invertiti, prima di montare tutto nella scatola.
+  - platform: template
+    name: "Test LED verde"
+    on_press:
+      - script.execute: led_ok
+  - platform: template
+    name: "Test LED rosso"
+    on_press:
+      - script.execute: led_ko
+  - platform: template
+    name: "Test LED giallo"
+    on_press:
+      - script.execute: led_attesa
 
 # All'avvio il LED dice subito in che stato è il lettore. Si aspetta un
 # attimo: `restore_mode` deve aver già ripristinato l'interruttore di lettura,
