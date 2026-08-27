@@ -8,6 +8,7 @@ const PANEL_VERSION = "0.15.1";
 const TABS = [
   { id: "stato", label: "Stato" },
   { id: "tessere", label: "Tessere" },
+  { id: "persone", label: "Persone" },
   { id: "dispositivi", label: "Dispositivi" },
   { id: "varchi", label: "Varchi" },
   { id: "finestre", label: "Finestre" },
@@ -482,6 +483,7 @@ class AccessControlPanel extends HTMLElement {
   _corpo(d) {
     if (this._tab === "stato") return this._vistaStato(d);
     if (this._tab === "tessere") return this._vistaTessere(d);
+    if (this._tab === "persone") return this._vistaPersone(d);
     if (this._tab === "dispositivi") return this._vistaDispositivi(d);
     if (this._tab === "varchi") return this._vistaVarchi(d);
     if (this._tab === "finestre") return this._vistaFinestre(d);
@@ -655,16 +657,32 @@ class AccessControlPanel extends HTMLElement {
              </p>
            </div>`;
 
-    // ── gruppi: prima le orfane, poi un gruppo per titolare ─────────────
+    // ── gruppi ──────────────────────────────────────────────────────────
+    //
+    // Le tessere in blacklist escono dal gruppo del titolare e vanno in una
+    // vista loro. Non e' un vezzo: sono le uniche che, ripassando, fanno
+    // scattare l'allarme, e in mezzo alle tessere buone di una persona quella
+    // riga si legge come una qualsiasi. Chi apre questa pagina dopo un
+    // allarme deve trovarle tutte insieme, senza cercarle persona per
+    // persona.
+    //
+    // Orfane e blacklist compaiono solo se ce n'e': un riquadro che dice
+    // «nessuna» e' rumore permanente per informare di un caso che quasi
+    // sempre non esiste.
     const persone = d.persone || [];
-    const orfane = d.tessere.filter((c) => !c.person);
-    const gruppi = [this._gruppoOrfane(orfane, persone)];
+    const inBlacklist = d.tessere.filter((c) => c.state === "blacklist");
+    const buone = d.tessere.filter((c) => c.state !== "blacklist");
+    const orfane = buone.filter((c) => !c.person);
+    const gruppi = [
+      this._gruppoBlacklist(inBlacklist, persone),
+      this._gruppoOrfane(orfane, persone),
+    ];
 
     for (const p of persone) {
       gruppi.push(
         this._gruppoPersona(
           p,
-          d.tessere.filter((c) => c.person === p.entity_id),
+          buone.filter((c) => c.person === p.entity_id),
           persone,
         ),
       );
@@ -699,31 +717,144 @@ class AccessControlPanel extends HTMLElement {
   }
 
   _gruppoOrfane(tessere, persone) {
-    const vuoto = tessere.length === 0;
+    // Niente riquadro se non ce n'e': «nessuna tessera in sospeso» e' una
+    // riga che sta li' per sempre a informare di un caso che quasi mai
+    // esiste, e sposta piu' in basso quello che si e' venuti a vedere.
+    if (!tessere.length) return "";
     return `
-      <section class="card gruppo ${vuoto ? "spento" : "orfane"}" data-drop="">
+      <section class="card gruppo orfane" data-drop="">
         <header class="titolare">
-          <div class="avatar avatar-orfano">${icona(vuoto ? "check" : "alert")}</div>
+          <div class="avatar avatar-orfano">${icona("alert")}</div>
           <div class="chi">
             <b>Senza titolare</b>
-            <span class="sotto">${
-              vuoto
-                ? "nessuna tessera in sospeso"
-                : `${tessere.length} ${tessere.length === 1 ? "tessera non apre" : "tessere non aprono"} — assegnale a una persona`
-            }</span>
+            <span class="sotto">${tessere.length} ${
+              tessere.length === 1 ? "tessera non apre" : "tessere non aprono"
+            } — assegnale a una persona</span>
           </div>
           <span class="conteggio">${tessere.length}</span>
         </header>
-        ${vuoto ? "" : this._tabellaTessere(tessere, persone)}
+        ${this._tabellaTessere(tessere, persone)}
       </section>`;
   }
 
-  _gruppoPersona(p, tessere, persone) {
-    const avatar = p.foto
+  _gruppoBlacklist(tessere, persone) {
+    if (!tessere.length) return "";
+    return `
+      <section class="card gruppo in-blacklist">
+        <header class="titolare">
+          <div class="avatar avatar-blacklist">${icona("block")}</div>
+          <div class="chi">
+            <b>In blacklist</b>
+            <span class="sotto">${tessere.length} ${
+              tessere.length === 1 ? "tessera revocata" : "tessere revocate"
+            } — non aprono, e fanno scattare l'allarme se ripassano</span>
+          </div>
+          <span class="conteggio">${tessere.length}</span>
+        </header>
+        <p class="nota">Restano nel registro apposta: e' quello che permette di
+          riconoscerle. Eliminandole tornerebbero sconosciute qualsiasi, e
+          ripassando non succederebbe piu' niente.</p>
+        ${this._tabellaTessere(tessere, persone, true)}
+      </section>`;
+  }
+
+  _avatar(p) {
+    return p.foto
       ? `<img class="avatar" src="${esc(p.foto)}" alt="" />`
       : `<div class="avatar avatar-iniziali">${esc(
           p.nome.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase(),
         )}</div>`;
+  }
+
+  // ── persone ──────────────────────────────────────────────────────────
+
+  _vistaPersone(d) {
+    const persone = d.persone || [];
+    const tessere = d.tessere || [];
+
+    if (!persone.length) {
+      return `
+        <section class="card">
+          <h2>Persone</h2>
+          <p class="nota">${icona("alert")}
+            <span>Nessuna persona configurata in Home Assistant. Le tessere si
+            assegnano a una <code>person.*</code>, quindi finché non ce n'è
+            almeno una non possono aprire niente.</span></p>
+        </section>`;
+    }
+
+    const schede = persone
+      .map((p) => {
+        const mie = tessere.filter((c) => c.person === p.entity_id);
+        const dove =
+          p.stato === "home" ? "in casa" : p.stato === "not_home" ? "fuori" : p.stato;
+
+        const bottoni = ["bambino", "adulto"]
+          .map(
+            (r) =>
+              `<button class="${p.ruolo ? "mini" : "scegli-ruolo"} ${
+                p.ruolo === r ? "ok" : ""
+              }" data-ruolo="${esc(p.entity_id)}|${r}">${icona(r)}${r}</button>`,
+          )
+          .join("");
+
+        return `
+          <section class="card gruppo ${p.ruolo ? "" : "senza-ruolo"}">
+            <header class="titolare">
+              ${this._avatar(p)}
+              <div class="chi">
+                <b>${esc(p.nome)}</b>
+                <span class="sotto">
+                  ${
+                    p.ruolo
+                      ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>`
+                      : `<span class="tag ruolo-mancante">${icona("alert")} ruolo da assegnare</span>`
+                  }
+                  <span class="punto ${p.stato === "home" ? "acceso" : ""}"></span>${esc(dove)}
+                  · ${mie.length} ${mie.length === 1 ? "tessera" : "tessere"}
+                </span>
+              </div>
+              <span class="conteggio">${mie.length}</span>
+            </header>
+            ${
+              p.ruolo
+                ? `<div class="ruoli">
+                     ${bottoni}
+                     <button class="mini" data-ruolo="${esc(p.entity_id)}|"
+                       title="Rimuovi il ruolo">${icona("togliRuolo")}togli</button>
+                   </div>`
+                : `<div class="serve-ruolo">
+                     <p class="nota">
+                       ${icona("alert")}
+                       <span><b>Scegli se è un bambino o un adulto.</b>
+                       Finché non ha un ruolo le sue tessere <b>non aprono
+                       nulla</b>. Non viene trattata come adulto per comodità:
+                       sarebbe darle i permessi più ampi proprio perché nessuno
+                       ha detto chi è.</span>
+                     </p>
+                     <div class="ruoli">${bottoni}</div>
+                   </div>`
+            }
+          </section>`;
+      })
+      .join("");
+
+    return `
+      <section class="card">
+        <h2>Chi può entrare, e con che permessi</h2>
+        <p class="nota">Il ruolo non è un'etichetta: è quello che le finestre
+          orarie leggono per decidere. Una finestra dice <b>quali ruoli</b>
+          ammette e quando, quindi una persona senza ruolo non rientra in
+          nessuna finestra — e le sue tessere non aprono, per quante ne abbia.</p>
+        <p class="nota">Le persone arrivano da Home Assistant: si aggiungono
+          da Impostazioni → Persone, non da qui.</p>
+      </section>
+
+      ${schede}`;
+  }
+
+  _gruppoPersona(p, tessere, persone) {
+    const avatar = this._avatar(p);
 
     const dove =
       p.stato === "home"
@@ -739,41 +870,27 @@ class AccessControlPanel extends HTMLElement {
         : `${tessere.length} ${tessere.length === 1 ? "tessera" : "tessere"}` +
           (attive < tessere.length ? ` · ${attive} attive` : "");
 
-    // Il ruolo si sceglie qui, dove si vede a chi lo si sta dando. Senza
-    // ruolo le tessere di questa persona non aprono: è una decisione che
-    // manca, non un valore da indovinare.
+    // Il ruolo qui si LEGGE e basta: sceglierlo è cosa della scheda
+    // Persone. Non è pignoleria — un pulsante che cambia i permessi di
+    // qualcuno, messo in mezzo all'elenco delle sue tessere, si preme mentre
+    // si sta facendo un'altra cosa. Resta il richiamo quando manca, perché
+    // quello riguarda le tessere: finché non c'è, non aprono.
     const ruolo = p.ruolo
       ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>`
       : `<span class="tag ruolo-mancante">${icona("alert")} ruolo da assegnare</span>`;
 
-    // Con il ruolo già scelto bastano due pulsantini per cambiarlo. Senza,
-    // scegliere è l'unica cosa da fare su questa scheda: l'istruzione va
-    // prima dei pulsanti — dopo si legge a scelta già fatta o non si legge —
-    // e i pulsanti sono grandi, perché sono l'azione, non un dettaglio.
-    const bottoniRuolo = (cls) =>
-      ["bambino", "adulto"]
-        .map(
-          (r) =>
-            `<button class="${cls} ${p.ruolo === r ? "ok" : ""}"
-               data-ruolo="${esc(p.entity_id)}|${r}">${icona(r)}${r}</button>`,
-        )
-        .join("");
-
     const sceltaRuolo = p.ruolo
-      ? `<div class="ruoli">
-           ${bottoniRuolo("mini")}
-           <button class="mini" data-ruolo="${esc(p.entity_id)}|"
-             title="Rimuovi il ruolo">${icona("togliRuolo")}togli</button>
-         </div>`
+      ? ""
       : `<div class="serve-ruolo">
            <p class="nota">
              ${icona("alert")}
-             <span><b>Scegli qui sotto se è un bambino o un adulto.</b>
-             Finché non ha un ruolo le sue tessere <b>non aprono nulla</b>.
-             Non viene trattata come adulto per comodità: sarebbe darle i
-             permessi più ampi proprio perché nessuno ha detto chi è.</span>
+             <span><b>${esc(p.nome)} non ha un ruolo</b>, quindi queste
+             tessere <b>non aprono nulla</b>. Il ruolo si assegna dalla
+             scheda Persone.</span>
            </p>
-           <div class="ruoli">${bottoniRuolo("scegli-ruolo")}</div>
+           <div class="ruoli">
+             <button data-vai="persone">${icona("adulto")} Vai a Persone</button>
+           </div>
          </div>`;
 
     return `
@@ -802,7 +919,12 @@ class AccessControlPanel extends HTMLElement {
       </section>`;
   }
 
-  _tabellaTessere(tessere, persone) {
+  // `conTitolare`: nella vista blacklist le tessere arrivano da persone
+  // diverse, quindi il titolare va scritto. Negli altri elenchi lo dice gia'
+  // il gruppo che le contiene, e ripeterlo su ogni riga sarebbe rumore.
+  _tabellaTessere(tessere, persone, conTitolare = false) {
+    const nomeTitolare = (c) =>
+      persone.find((p) => p.entity_id === c.person)?.nome || "senza titolare";
     const azioni = (c) => {
       const b = [];
       if (c.state !== "attiva")
@@ -837,7 +959,7 @@ class AccessControlPanel extends HTMLElement {
       ].join("");
       return `
         <tr class="riga-assegna">
-          <td colspan="6">
+          <td colspan="${conTitolare ? 7 : 6}">
             <div class="assegna">
               <span class="nota">Assegna <b>${esc(c.name)}</b> a:</span>
               <div class="azioni">${voci}</div>
@@ -863,6 +985,11 @@ class AccessControlPanel extends HTMLElement {
                  title="Invio per salvare" />
           <div class="uid">${esc(c.uid)}</div>
         </td>
+        ${
+          conTitolare
+            ? `<td data-etichetta="Titolare">${esc(nomeTitolare(c))}</td>`
+            : ""
+        }
         <td data-etichetta="Sicurezza">
           <span class="pill ${c.sicurezza === "forte" ? "forte" : "debole"}">${esc(c.sicurezza)}</span>
           <div class="uid">${esc(c.tecnologia_label)}</div>
@@ -879,7 +1006,8 @@ class AccessControlPanel extends HTMLElement {
       <div class="tabella">
         <table>
           <thead><tr>
-            <th></th><th>Tessera</th><th>Sicurezza</th>
+            <th></th><th>Tessera</th>${conTitolare ? "<th>Titolare</th>" : ""}
+            <th>Sicurezza</th>
             <th>Stato</th><th>Ultimo uso</th><th>Azioni</th>
           </tr></thead>
           <tbody>${righe}</tbody>
@@ -2171,7 +2299,9 @@ class AccessControlPanel extends HTMLElement {
                          background:color-mix(in srgb, var(--primary-color) 25%, transparent); }
       .avatar-orfano { background:rgba(255,167,38,.22); color:#e08600; }
       .avatar-orfano .ico { width:24px; height:24px; }
-      .gruppo.spento .avatar-orfano { background:rgba(67,160,71,.18); color:#2e7d32; }
+      .gruppo.in-blacklist { border-color:var(--error-color,#db4437); }
+      .avatar-blacklist { background:rgba(219,68,55,.18); color:var(--error-color,#db4437); }
+      .avatar-blacklist .ico { width:24px; height:24px; }
       .chi { flex:1; display:flex; flex-direction:column; gap:3px; min-width:0; }
       .chi b { font-size:1.1rem; }
       .sotto { font-size:.88rem; color:var(--secondary-text-color);

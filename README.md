@@ -89,7 +89,7 @@ disabilitata o in blacklist, o se un lettore viene manomesso:
 3. Installa **Controllo Accessi**, poi riavvia Home Assistant
 4. Impostazioni → Dispositivi e servizi → **Aggiungi integrazione** → Controllo Accessi
 
-Nel setup si chiede solo l'essenziale. Tessere, lettori, varchi, finestre,
+Nel setup si chiede solo l'essenziale. Tessere, persone, lettori, varchi, finestre,
 notifiche e soglie si gestiscono dal pannello **Accessi** che compare nella barra laterale.
 
 ### Manuale

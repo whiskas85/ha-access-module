@@ -8,6 +8,31 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Scheda Persone.** I ruoli — bambino, adulto, togli — si assegnano da li',
+  non piu' in mezzo all'elenco delle tessere
+  - Un pulsante che cambia i permessi di qualcuno, messo fra le sue tessere,
+    si preme mentre si sta facendo un'altra cosa. La scheda Tessere torna a
+    parlare solo di tessere
+  - Nella scheda Tessere resta il richiamo quando una persona non ha ruolo,
+    perche' quello riguarda le tessere: finche' non c'e', non aprono. Ma e' un
+    avviso con un rimando, non l'editor
+- **Vista dedicata per le tessere in blacklist**, come per quelle senza
+  titolare. Escono dal gruppo del titolare e stanno insieme, con una colonna
+  che dice di chi sono
+  - Sono le uniche che, ripassando, fanno scattare l'allarme: in mezzo alle
+    tessere buone di una persona quella riga si legge come una qualsiasi, e
+    chi apre il pannello dopo un allarme dovrebbe cercarle persona per persona
+
+### Modificato
+
+- **Il riquadro «Senza titolare» compare solo se c'e' davvero una tessera
+  senza titolare.** Prima restava li' a dichiarare «nessuna tessera in
+  sospeso»: rumore permanente per informare di un caso che quasi sempre non
+  esiste, e che spinge piu' in basso quello che si e' venuti a vedere. Stessa
+  regola per la vista blacklist
+
 ## [0.15.1] - 2026-08-27
 
 ### Corretto
