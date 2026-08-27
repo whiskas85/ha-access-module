@@ -278,8 +278,14 @@ pn532_i2c:
                       data_template:
                         uid: "{{ codice }}"
                       variables:
-                        codice: |-
-                          return x;
+                        # `!lambda` NON e' decorativo: senza il tag, ESPHome
+                        # manda a Home Assistant il TESTO "return x;" invece
+                        # dell'UID letto. Il template `{{ codice }}` allora si
+                        # risolve in quella stringa e ogni tessera arriva al
+                        # modulo con lo stesso codice — il registro censisce
+                        # una tessera fantasma alla prima lettura e da li' in
+                        # poi ogni altra tessera risulta "gia' censita".
+                        codice: !lambda 'return x;'
                 else:
                   - logger.log: "Rate limit attivo"
                   - script.execute: suono_ko

@@ -8,6 +8,20 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Ogni lettura arrivava a Home Assistant con lo stesso codice `RETURNX;`
+  invece dell'UID della tessera.** Nel nodo ESPHome la variabile che estrae
+  l'UID era scritta senza il tag `!lambda`: ESPHome la mandava come testo
+  letterale, il template `{{ codice }}` si risolveva in quella stringa e il
+  modulo la normalizzava in `RETURNX;`
+  - Il sintomo non sembrava un bug del lettore: il censimento creava una
+    tessera fantasma alla prima lettura, e da lì in poi ogni altra tessera
+    risultava «già censita» — perché per il registro *era* la stessa
+  - Il tag `!lambda` sulle `variables` non è più opzionale: senza, ESPHome
+    invia il sorgente al posto del risultato. Il perché è ora scritto nel
+    commento sopra la riga, che è l'unico posto dove si vede rileggendo
+
 ## [0.11.1] - 2026-08-27
 
 ### Corretto
