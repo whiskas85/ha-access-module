@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, NOTIFY_DESTINAZIONE, PANEL_URL
+from .foto import async_scatta, deposita
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +46,47 @@ def _destinazione(tipo: str) -> dict[str, Any]:
         return {}
     percorso = f"/{PANEL_URL}/{sezione}" if sezione else f"/{PANEL_URL}"
     return {"clickAction": percorso, "url": percorso}
+
+
+def _modo_camera(store, camera: str) -> str:
+    """Come si ottiene una foto da questa telecamera.
+
+    «scatto» e' l'istantanea, immediata. «diretta» e' un fotogramma preso dal
+    flusso video, che costa qualche secondo e vale solo per le telecamere che
+    non sanno scattare. Lo decide la prova fatta scegliendola, non ogni
+    notifica: provare tutte le volte metterebbe quei secondi sulla strada
+    della porta che si apre.
+    """
+    if not camera:
+        return ""
+    return (store.settings.get("camere_scatto") or {}).get(camera, "scatto")
+
+
+async def _async_manda_con_fotogramma(
+    hass: HomeAssistant,
+    dominio: str,
+    nome: str,
+    payload: dict[str, Any],
+    camera: str,
+) -> None:
+    """Prende il fotogramma e poi manda: in disparte, non sulla strada.
+
+    Aprire una diretta e aspettare un'immagine completa costa secondi, e
+    questa funzione viene chiamata mentre la catena di un accesso sta ancora
+    scorrendo. Farla aspettare vorrebbe dire una porta che si apre due secondi
+    dopo per colpa di una fotografia.
+    """
+    immagine = await async_scatta(hass, camera)
+    if immagine:
+        dati = {**payload.get("data", {}), "image": deposita(hass, immagine)}
+        payload = {**payload, "data": dati}
+    else:
+        _LOGGER.warning("Nessun fotogramma da %s: notifica senza foto", camera)
+
+    try:
+        await hass.services.async_call(dominio, nome, payload, blocking=False)
+    except Exception:
+        _LOGGER.exception("Notifica con foto fallita su %s.%s", dominio, nome)
 
 
 async def async_notify(
@@ -86,10 +128,11 @@ async def async_notify(
     # ha due telecamere, e la foto della porta sbagliata e' peggio di nessuna
     # foto — fa credere di aver visto.
     camera = camera or store.settings.get("camera_entity")
+    modo = _modo_camera(store, camera) if tipo_conf.get("immagine") else ""
     if tipo_conf.get("immagine"):
-        if camera:
+        if camera and modo != "diretta":
             dati["image"] = f"/api/camera_proxy/{camera}"
-        else:
+        elif not camera:
             # Chiedere la foto senza aver scelto la telecamera mandava la
             # notifica senza allegato e senza dire niente: da fuori sembra un
             # difetto dell'allegato, non una configurazione che manca.
@@ -107,6 +150,12 @@ async def async_notify(
         payload["data"] = dati
 
     dominio, _, nome = servizio.partition(".")
+    if modo == "diretta":
+        hass.async_create_task(
+            _async_manda_con_fotogramma(hass, dominio, nome, payload, camera)
+        )
+        return True
+
     try:
         await hass.services.async_call(dominio, nome, payload, blocking=False)
     except Exception:
@@ -144,9 +193,10 @@ async def async_notify_alarm_with_open(
 
     dati: dict[str, Any] = {**_destinazione("allarme"), "ttl": 0, "priority": "high"}
     camera = camera or store.settings.get("camera_entity")
-    if camera:
+    modo = _modo_camera(store, camera)
+    if camera and modo != "diretta":
         dati["image"] = f"/api/camera_proxy/{camera}"
-    elif tipo_conf.get("immagine"):
+    elif not camera and tipo_conf.get("immagine"):
         _LOGGER.warning(
             "Notifica di allarme: e' richiesta la foto ma non c'e' nessuna "
             "telecamera scelta, ne' sul lettore ne' nelle impostazioni"
@@ -155,17 +205,20 @@ async def async_notify_alarm_with_open(
         dati["actions"] = azioni
 
     dominio, _, nome = servizio.partition(".")
-    try:
-        await hass.services.async_call(
-            dominio,
-            nome,
-            {
-                "title": _riempi(tipo_conf.get("titolo", ""), valori),
-                "message": _riempi(tipo_conf.get("messaggio", ""), valori) or " ",
-                "data": dati,
-            },
-            blocking=False,
+    payload = {
+        "title": _riempi(tipo_conf.get("titolo", ""), valori),
+        "message": _riempi(tipo_conf.get("messaggio", ""), valori) or " ",
+        "data": dati,
+    }
+
+    if modo == "diretta":
+        hass.async_create_task(
+            _async_manda_con_fotogramma(hass, dominio, nome, payload, camera)
         )
+        return True
+
+    try:
+        await hass.services.async_call(dominio, nome, payload, blocking=False)
     except Exception:
         _LOGGER.exception("Notifica di allarme fallita su %s", servizio)
         return False

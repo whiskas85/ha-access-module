@@ -29,6 +29,7 @@ from .const import (
     TECHNOLOGIES,
     TECHNOLOGY_SECURITY,
 )
+from .foto import AccessPhotoView, async_scatta
 from .nomi import nome_dispositivo, nome_persona
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ async def async_setup_panel(hass: HomeAssistant, version: str = "") -> None:
     )
 
     hass.http.register_view(AccessStateView)
+    hass.http.register_view(AccessPhotoView)
     hass.http.register_view(AccessCommandView)
 
     # La versione nell'URL del modulo è ciò che impedisce al browser di
@@ -165,44 +167,60 @@ def _registro(hass: HomeAssistant, store) -> list[dict[str, Any]]:
     return righe
 
 
-async def _prova_camera(hass: HomeAssistant, entity_id: str) -> list[str]:
-    """Scatta subito, per non scoprire alla prima notifica che non scatta.
+async def _prova_camera(hass: HomeAssistant, store, entity_id: str) -> list[str]:
+    """Prova subito la telecamera, e ricorda come si ottiene una foto.
 
-    Non tutte le entita' `camera.` sanno produrre un fermo immagine: le
-    telecamere in sola diretta di certe integrazioni rispondono con un errore,
-    e la notifica parte senza allegato senza dire niente. Scegliere una
-    telecamera e ricevere «questa non scatta» e' l'unico momento in cui quel
-    difetto si puo' capire — dopo diventa «la foto non c'e'» e non si sa
-    perche'.
+    Tre esiti. Se l'istantanea funziona non c'e' altro da dire. Se non
+    funziona ma la diretta si apre, la foto si ottiene lo stesso prendendo un
+    fotogramma: costa qualche secondo, quindi la notifica parte per una strada
+    diversa — e va saputo prima, non a ogni lettura. Se non si ottiene niente,
+    lo si dice adesso.
 
-    L'esito e' un avviso, non un errore: la scelta si salva lo stesso. Puo'
-    trattarsi di una telecamera spenta adesso e viva stasera, e rifiutare la
-    configurazione per un'indisponibilita' momentanea sarebbe peggio.
+    Perche' si ricorda invece di riprovare ogni volta: aprire il flusso video
+    mentre la catena di un accesso sta scorrendo vorrebbe dire una porta che
+    si apre due secondi dopo per colpa di una fotografia.
+
+    Nessuno dei tre esiti rifiuta la scelta. Puo' trattarsi di una telecamera
+    spenta adesso e viva stasera, e bloccare la configurazione per
+    un'indisponibilita' momentanea sarebbe peggio del difetto che evita.
     """
     if not entity_id:
         return []
+
     from homeassistant.components import camera as camera_ha
 
+    stato = hass.states.get(entity_id)
+    nome = (stato and stato.attributes.get("friendly_name")) or entity_id
+
+    modo = "niente"
+    dettaglio = ""
     try:
         await camera_ha.async_get_image(hass, entity_id, timeout=10)
+        modo = "scatto"
     except Exception as err:  # noqa: BLE001 — qualunque guasto vale lo stesso
-        _LOGGER.warning(
-            "La telecamera %s non produce un fermo immagine: %s", entity_id, err
-        )
-        stato = hass.states.get(entity_id)
-        nome = (stato and stato.attributes.get("friendly_name")) or entity_id
-        # Il testo distingue le due cose apposta: la diretta di questa
-        # telecamera puo' funzionare benissimo, ed e' quello che si vede
-        # aprendola in Home Assistant. A mancare e' lo *scatto*, che e' un'altra
-        # funzione e l'unica che serve alla foto di una notifica. Scriverlo
-        # come «non funziona» farebbe cercare un guasto che non c'e'.
+        dettaglio = str(err)
+        if await async_scatta(hass, entity_id):
+            modo = "diretta"
+
+    camere = dict(store.settings.get("camere_scatto") or {})
+    camere[entity_id] = modo
+    await store.async_update_settings({"camere_scatto": camere})
+
+    if modo == "scatto":
+        return []
+    if modo == "diretta":
         return [
-            f"«{nome}» non riesce a produrre un fermo immagine ({err}). "
-            f"La diretta puo' funzionare lo stesso: e' lo scatto a mancare, "
-            f"ed e' quello che finisce nelle notifiche. La scelta e' salvata, "
-            f"ma la foto arriverebbe vuota."
+            f"«{nome}» non sa produrre un'istantanea, ma la diretta si apre: "
+            f"la foto sara' un fotogramma del video. Arriva qualche secondo "
+            f"dopo la notifica, e non ritarda l'apertura della porta."
         ]
-    return []
+
+    _LOGGER.warning("Da %s non si ottiene nessuna immagine: %s", entity_id, dettaglio)
+    return [
+        f"Da «{nome}» non si ottiene nessuna immagine ({dettaglio}): ne' "
+        f"un'istantanea ne' un fotogramma della diretta. La scelta e' salvata, "
+        f"ma la notifica arriverebbe senza foto."
+    ]
 
 
 def _nome_dispositivo(hass: HomeAssistant, store, device_id: str) -> str:
@@ -417,7 +435,7 @@ class AccessCommandView(HomeAssistantView):
             if action == "set_settings":
                 impostazioni = body.get("settings") or {}
                 avvisi += await _prova_camera(
-                    hass, impostazioni.get("camera_entity", "")
+                    hass, store, impostazioni.get("camera_entity", "")
                 )
                 await store.async_update_settings(impostazioni)
                 coordinator.async_refresh()
@@ -462,7 +480,7 @@ class AccessCommandView(HomeAssistantView):
 
             elif action == "set_device":
                 cambiamenti = body.get("changes") or {}
-                avvisi += await _prova_camera(hass, cambiamenti.get("camera", ""))
+                avvisi += await _prova_camera(hass, store, cambiamenti.get("camera", ""))
                 await store.async_update_device(body["device_id"], cambiamenti)
 
             elif action == "upsert_window":

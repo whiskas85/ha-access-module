@@ -8,6 +8,24 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **La foto si prende dalla diretta, quando la telecamera non sa scattare.**
+  Le videocamere in sola diretta di certe integrazioni rispondono con un
+  errore alla richiesta di istantanea pur avendo un flusso video che funziona:
+  ora il modulo apre quel flusso e ne prende un fotogramma con ffmpeg
+  - Quale delle due strade serva lo decide la prova fatta scegliendo la
+    telecamera, e viene ricordata. Aprire il flusso video mentre la catena di
+    un accesso sta scorrendo vorrebbe dire una porta che si apre due secondi
+    dopo per colpa di una fotografia: la notifica col fotogramma parte in
+    disparte e arriva qualche secondo dopo, senza ritardare l'apertura
+  - Il fotogramma **non** finisce in `/config/www/`. Sarebbe la strada corta,
+    ma quella cartella e' pubblica: chi indovina il nome del file vedrebbe chi
+    c'era alla porta senza aver mai fatto l'accesso a Home Assistant. Resta in
+    memoria, dietro un indirizzo autenticato, e scade da solo
+  - ffmpeg si avvia da solo alla prima foto che lo richiede, invece di essere
+    una dipendenza che parte anche per chi la foto non la vuole
+
 ## [0.21.0] - 2026-08-27
 
 ### Modificato
