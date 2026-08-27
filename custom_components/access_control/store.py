@@ -12,7 +12,7 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util, slugify
@@ -44,6 +44,7 @@ from .const import (
     SIGNAL_STATE_CHANGED,
     STORAGE_KEY,
     STORAGE_VERSION,
+    SUFFIX_ENABLE_SWITCH,
     SUFFIX_ENROLL_SERVICE,
     SUFFIX_READER_SERVICE,
 )
@@ -392,6 +393,11 @@ class AccessStore:
         indovinare il lettore sbagliato manderebbe l'esito di una porta a
         un'altra.
 
+        Vale per tutti e tre i campi che collegano il modulo al lettore: la
+        risposta acustica, la spia del censimento e l'interruttore di lettura
+        che l'allarme spegne. Nessuno dei tre ha un default sensato, e tutti e
+        tre falliscono in silenzio.
+
         Non sovrascrive mai un valore gia' scritto: se qualcuno ha configurato
         il campo a mano, ha ragione lui.
         """
@@ -407,7 +413,32 @@ class AccessStore:
             )
             if not device.get(campo)
         ]
+        cambiato = False
+
+        # L'interruttore di lettura e' un'entita' e non un'azione, quindi si
+        # cerca fra le entita' di QUESTO dispositivo: li' dentro l'omonimia
+        # non esiste, e non serve indovinare niente.
+        if not device.get("enable_switch"):
+            candidati = [
+                voce.entity_id
+                for voce in er.async_entries_for_device(
+                    er.async_get(self.hass), device_id
+                )
+                if voce.entity_id.startswith("switch.")
+                and voce.entity_id.endswith(SUFFIX_ENABLE_SWITCH)
+            ]
+            if len(candidati) == 1:
+                device["enable_switch"] = candidati[0]
+                cambiato = True
+                _LOGGER.info(
+                    "Lettore %s: enable_switch impostato a %s",
+                    device_id,
+                    candidati[0],
+                )
+
         if not mancanti:
+            if cambiato:
+                await self.async_save_and_notify()
             return device
 
         disponibili = list(
@@ -415,7 +446,6 @@ class AccessStore:
         )
         atteso = _prefisso_nodo(self.hass, device_id)
 
-        cambiato = False
         for campo, suffisso in mancanti:
             candidati = [s for s in disponibili if s.endswith(suffisso)]
             scelto = ""

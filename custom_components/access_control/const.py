@@ -242,6 +242,9 @@ ENROLLMENT_TIMEOUT_S: Final = 60
 ESPHOME_DOMAIN: Final = "esphome"
 SUFFIX_READER_SERVICE: Final = "_esito_accesso"
 SUFFIX_ENROLL_SERVICE: Final = "_modo_censimento"
+# Questo e' un'entita', non un'azione: si cerca fra le entita' del
+# dispositivo, non fra i servizi.
+SUFFIX_ENABLE_SWITCH: Final = "_lettura_abilitata"
 
 # Registrazione automatica di un LETTORE. Cosa diversa dal censimento di una
 # tessera, e va tenuta diversa: qui interessa solo sapere quale dispositivo ha

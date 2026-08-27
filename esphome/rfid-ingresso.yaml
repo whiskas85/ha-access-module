@@ -14,6 +14,9 @@
 
 substitutions:
   nome_nodo: rfid-ingresso
+  # Entita' del modulo che dice se l'impianto e' in allarme. Il nodo la legge
+  # da Home Assistant e si blocca da solo: vedi il blocco `binary_sensor`.
+  entita_allarme: binary_sensor.controllo_accessi_allarme
 
 esphome:
   name: ${nome_nodo}
@@ -242,6 +245,44 @@ light:
 #  non decide.
 # ═══════════════════════════════════════════════════════════════════════════
 binary_sensor:
+  # ═════════════════════════════════════════════════════════════════════════
+  #  ALLARME DELL'IMPIANTO, LETTO DA HOME ASSISTANT
+  #
+  #  Il nodo non decide di bloccarsi: chiede, e obbedisce. La differenza
+  #  conta, perche' e' quello che rende il blocco resistente al riavvio senza
+  #  metterlo nella flash di un dispositivo che sta fuori casa.
+  #
+  #  ⚠️ Perche' non basta che il modulo spenga l'interruttore.
+  #
+  #  Quella e' una spinta: parte una volta, quando l'allarme scatta. Se il
+  #  nodo si riavvia — blackout, aggiornamento, watchdog — riparte con la
+  #  lettura accesa e nessuno gliela rispegne, perche' per Home Assistant
+  #  l'allarme era gia' scattato e non scatta due volte. Il lettore tornerebbe
+  #  a leggere mentre l'impianto e' bloccato.
+  #
+  #  Qui invece lo stato viene *tirato*: l'API lo consegna appena il
+  #  collegamento si apre, a ogni avvio, senza che nessuno debba ricordarsi
+  #  di rimandarlo.
+  #
+  #  Resta vero che il nodo riparte con la lettura accesa (RESTORE_DEFAULT_ON,
+  #  vedi sopra): un lettore muto dopo un calo di tensione e' un guasto
+  #  silenzioso, e quella scelta non cambia. Cambia che adesso la finestra in
+  #  cui e' acceso a torto dura il tempo di collegarsi a Home Assistant,
+  #  invece di durare finche' qualcuno se ne accorge — e in quella finestra
+  #  comunque non apre niente, perche' ad aprire e' il modulo.
+  # ═════════════════════════════════════════════════════════════════════════
+  - platform: homeassistant
+    id: allarme_impianto
+    entity_id: ${entita_allarme}
+    # Non serve rimandare a Home Assistant un'entita' che e' sua.
+    internal: true
+    on_press:
+      - logger.log: "Impianto in allarme: lettura sospesa"
+      - switch.turn_off: lettura_abilitata
+    on_release:
+      - logger.log: "Allarme rientrato: lettura riabilitata"
+      - switch.turn_on: lettura_abilitata
+
   - platform: gpio
     name: "Tamper"
     id: tamper

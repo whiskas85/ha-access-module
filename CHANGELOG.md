@@ -8,6 +8,37 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **In allarme il lettore si blocca davvero, e resta bloccato dopo un
+  riavvio.** Il nodo legge da Home Assistant l'entita' di allarme del modulo e
+  sospende la lettura da solo, con il LED rosso fisso
+  - Che il modulo spenga l'interruttore non basta: quella e' una spinta, parte
+    una volta sola quando l'allarme scatta. Se il nodo si riavvia — blackout,
+    aggiornamento, watchdog — riparte con la lettura accesa e nessuno gliela
+    rispegne, perche' per Home Assistant l'allarme era gia' scattato e non
+    scatta due volte. Ora lo stato viene *tirato* dal nodo: l'API glielo
+    consegna a ogni collegamento, senza che nessuno debba ricordarsene
+  - Il nodo continua a ripartire con la lettura accesa (`RESTORE_DEFAULT_ON`):
+    un lettore muto dopo un calo di tensione resta un guasto silenzioso, e
+    quella scelta non cambia. Cambia che la finestra in cui e' acceso a torto
+    dura il tempo di collegarsi a Home Assistant invece di durare finche'
+    qualcuno se ne accorge — e in quella finestra comunque non apre niente,
+    perche' ad aprire e' il modulo
+  - Il nodo non decide di bloccarsi: chiede, e obbedisce. Il blocco resiste al
+    riavvio senza mettere niente nella flash di un dispositivo che sta fuori
+    casa
+
+### Corretto
+
+- **`enable_switch` si compila da solo**, come gli altri due campi del
+  lettore. Era il terzo campo obbligatorio che nasceva vuoto, ed e' quello che
+  rendeva l'allarme una cosa scritta nel registro e invisibile alla porta: il
+  sistema si bloccava e il lettore continuava a leggere come se niente fosse
+  - Essendo un'entita' e non un'azione, si cerca fra le entita' di quel
+    dispositivo: li' dentro l'omonimia non esiste e non c'e' niente da
+    indovinare
+
 ## [0.13.0] - 2026-08-27
 
 ### Aggiunto
