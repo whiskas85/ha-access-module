@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-08-27
+
 ### Corretto
 
 - **Il pannello si aggiorna quando succede qualcosa, non piu' ogni dieci
