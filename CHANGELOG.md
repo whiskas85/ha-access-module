@@ -8,6 +8,21 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **La blacklist e' una linguetta dentro la scheda Tessere**, e non piu' un
+  riquadro impilato sopra l'elenco. La linguetta compare solo quando c'e'
+  almeno una tessera revocata
+  - Una scheda sempre presente che quasi sempre e' vuota insegna a ignorarla,
+    e il giorno che conta e' proprio quello in cui non va ignorata
+- **La configurazione di un lettore si apre sotto l'elenco, non sopra.**
+  Aprendola, l'elenco da cui si era partiti scivolava fuori schermo e il
+  riquadro compariva dove un attimo prima c'era altro: si perdeva il segno di
+  quale lettore si stesse configurando
+  - Aprendola la pagina ci scorre sopra, perche' ora sta sotto e potrebbe
+    restare fuori vista — e un pulsante che non produce niente di visibile si
+    preme due volte
+
 ## [0.16.2] - 2026-08-27
 
 ### Corretto

@@ -428,6 +428,13 @@ class AccessControlPanel extends HTMLElement {
       ),
     );
 
+    this.shadowRoot.querySelectorAll("[data-sottotab]").forEach((el) =>
+      el.addEventListener("click", () => {
+        this._sottoTessere = el.dataset.sottotab;
+        this._render();
+      }),
+    );
+
     this.shadowRoot.querySelectorAll("[data-tab]").forEach((el) =>
       el.addEventListener("click", () => {
         this._tab = el.dataset.tab;
@@ -705,10 +712,7 @@ class AccessControlPanel extends HTMLElement {
     const inBlacklist = d.tessere.filter((c) => c.state === "blacklist");
     const buone = d.tessere.filter((c) => c.state !== "blacklist");
     const orfane = buone.filter((c) => !c.person);
-    const gruppi = [
-      this._gruppoBlacklist(inBlacklist, persone),
-      this._gruppoOrfane(orfane, persone),
-    ];
+    const gruppi = [this._gruppoOrfane(orfane, persone)];
 
     for (const p of persone) {
       gruppi.push(
@@ -720,7 +724,32 @@ class AccessControlPanel extends HTMLElement {
       );
     }
 
+    // La blacklist e' una pagina dentro la pagina, e la linguetta per
+    // arrivarci esiste solo quando c'e' qualcosa dietro. Una scheda sempre
+    // presente che quasi sempre e' vuota insegna a ignorarla, e il giorno che
+    // conta e' proprio quello in cui non va ignorata.
+    const sotto =
+      inBlacklist.length && this._sottoTessere === "blacklist"
+        ? "blacklist"
+        : "tessere";
+
+    const linguette = inBlacklist.length
+      ? `<nav class="sotto-nav">
+           <button class="tab ${sotto === "tessere" ? "on" : ""}"
+             data-sottotab="tessere">${icona("rfid")} Tessere</button>
+           <button class="tab avviso ${sotto === "blacklist" ? "on" : ""}"
+             data-sottotab="blacklist">${icona("block")} Blacklist
+             <span class="conteggio-mini">${inBlacklist.length}</span></button>
+         </nav>`
+      : "";
+
+    if (sotto === "blacklist") {
+      return `${linguette}${this._gruppoBlacklist(inBlacklist, persone)}`;
+    }
+
     return `
+      ${linguette}
+
       <section class="card">
         <h2>Aggiungi una tessera</h2>
         ${boxEnrollment}
@@ -1159,8 +1188,6 @@ class AccessControlPanel extends HTMLElement {
         <div class="candidati">${elenco}</div>
       </section>
 
-      ${this._configLettore(d)}
-
       <section class="card">
         <h2>Lettori registrati</h2>
         <div class="tabella">
@@ -1175,7 +1202,9 @@ class AccessControlPanel extends HTMLElement {
           varco, dalla scheda Impostazioni. Rimuovendone uno, i varchi che lo
           usavano restano senza lettore — e il pannello lo dice, invece di
           lasciarli in silenzio a non ricevere mai letture.</p>
-      </section>`;
+      </section>
+
+      ${this._configLettore(d)}`;
   }
 
   _configLettore(d) {
@@ -1187,7 +1216,7 @@ class AccessControlPanel extends HTMLElement {
     const varchi = d.varchi || [];
 
     return `
-      <section class="card gruppo" data-config="${esc(id)}">
+      <section class="card gruppo" data-config-lettore data-config="${esc(id)}">
         <div class="titolare">
           ${icona("lettore", "ico-grande")}
           <div class="chi">
@@ -1873,6 +1902,11 @@ class AccessControlPanel extends HTMLElement {
         this._configDisp = el.dataset.configDisp;
         this._azioniInModifica = {};
         this._render();
+        // Sta sotto l'elenco, quindi aprendola puo' restare fuori schermo:
+        // un pulsante che non produce niente di visibile si preme due volte.
+        this.shadowRoot
+          .querySelector("[data-config-lettore]")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
       }),
     );
 
@@ -2240,6 +2274,14 @@ class AccessControlPanel extends HTMLElement {
       .tab { background:none; border:none; padding:10px 18px; border-radius:20px; cursor:pointer;
              color:var(--secondary-text-color); font-size:1rem; }
       .tab.on { background:var(--primary-color); color:var(--text-primary-color, #fff); }
+      .sotto-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+      .sotto-nav .tab { display:inline-flex; align-items:center; gap:7px; padding:8px 16px;
+                        font-size:.95rem; border:1px solid var(--divider-color); }
+      .sotto-nav .tab.avviso { color:var(--error-color,#db4437);
+                               border-color:rgba(219,68,55,.5); }
+      .sotto-nav .tab.avviso.on { background:var(--error-color,#db4437); color:#fff; }
+      .conteggio-mini { background:rgba(0,0,0,.14); border-radius:10px;
+                        padding:1px 8px; font-size:.85rem; }
       .card { background:var(--card-background-color); border-radius:12px; padding:18px; margin-bottom:16px;
               box-shadow:var(--ha-card-box-shadow, 0 1px 3px rgba(0,0,0,.12)); }
       .card.allarme { border-left:4px solid var(--error-color, #db4437); }
