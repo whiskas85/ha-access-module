@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-27
+
 ### Aggiunto
 
 - **Il modulo guarda da solo il contatto di manomissione** dei lettori
