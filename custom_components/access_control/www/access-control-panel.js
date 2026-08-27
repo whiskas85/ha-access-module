@@ -169,6 +169,29 @@ class AccessControlPanel extends HTMLElement {
       this._carica();
     }
     this._ascoltaCensimenti();
+    // I selettori gia' montati vanno tenuti aggiornati a mano: sono creati
+    // da noi, non li ridisegna nessun ciclo. Senza, restano con l'oggetto
+    // `hass` del momento in cui sono nati — comprese le traduzioni che
+    // allora non erano ancora arrivate.
+    for (const sel of this._selettori || []) sel.hass = hass;
+  }
+
+  async _traduzioniEditor() {
+    // Le stringhe dell'editor delle azioni stanno nel fascicolo di traduzione
+    // del pannello Impostazioni, e Home Assistant lo carica solo quando apre
+    // quel pannello. Qui dentro non lo apre nessuno: i componenti si
+    // disegnano lo stesso, ma senza testo — il pulsante di aggiunta resta un
+    // "+" muto e il menu a tre punti diventa una colonna di icone senza voci.
+    //
+    // `loadFragmentTranslation` e' il modo previsto per chiederlo: si passa il
+    // nome del fascicolo, non le singole chiavi.
+    if (this._traduzioniChieste || !this._hass?.loadFragmentTranslation) return;
+    this._traduzioniChieste = true;
+    try {
+      await this._hass.loadFragmentTranslation("config");
+    } catch (err) {
+      console.warn("Traduzioni dell'editor non caricate", err);
+    }
   }
 
   // ── censimenti ───────────────────────────────────────────────────────
@@ -989,7 +1012,9 @@ class AccessControlPanel extends HTMLElement {
     if (!contenitori.length) return;
 
     const disponibili = await caricaComponentiHA();
+    await this._traduzioniEditor();
 
+    this._selettori = [];
     contenitori.forEach((box) => {
       const deviceId = box.dataset.editorAzioni;
       const device = (this._data?.dispositivi || []).find(
@@ -1036,6 +1061,7 @@ class AccessControlPanel extends HTMLElement {
         sel.value = ev.detail.value;
       });
       box.appendChild(sel);
+      this._selettori.push(sel);
     });
   }
 

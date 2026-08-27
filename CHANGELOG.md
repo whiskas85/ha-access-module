@@ -8,6 +8,19 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **L'editor delle azioni compariva senza testo**: il pulsante di aggiunta era
+  un "+" muto e il menu a tre punti una colonna di icone senza voci
+  - Le stringhe di quell'editor stanno nel fascicolo di traduzione del
+    pannello Impostazioni, che Home Assistant carica solo quando apre quel
+    pannello. Qui dentro non lo apre nessuno: i componenti si disegnavano
+    correttamente, ma senza niente da scrivere dentro. Ora il fascicolo si
+    chiede esplicitamente con `loadFragmentTranslation`
+  - I selettori gia' montati ricevono l'oggetto `hass` aggiornato a ogni
+    giro: sono creati a mano e non li ridisegna nessun ciclo, quindi
+    restavano con quello del momento in cui erano nati — traduzioni comprese
+
 ## [0.14.1] - 2026-08-27
 
 ### Corretto
