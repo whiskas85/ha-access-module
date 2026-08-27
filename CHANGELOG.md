@@ -8,6 +8,23 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Firmware ESP32
+
+- **LED di stato RGB a tre canali** su GPIO25/26/27, catodo comune. La tabella
+  del cablaggio è scritta per esteso nel file perché i colori dei fili non
+  corrispondono ai canali: **il filo verde porta il rosso**, e sbagliarlo non
+  rompe niente ma fa impazzire in fase di prova
+- **Blu fisso quando il nodo non parla con Home Assistant.** È il colore che il
+  terzo canale ha reso disponibile, e serve più di quanto sembri: senza, un
+  lettore isolato dalla rete e un lettore bloccato per allarme sono
+  indistinguibili da fuori — entrambi non aprono. Ma vogliono due interventi
+  opposti, «guarda il WiFi» e «sblocca l'impianto», e chi arriva alla porta
+  deve poterlo capire senza entrare in casa
+  - Il LED segue `on_client_connected` / `on_client_disconnected`: cambia
+    nell'istante in cui il collegamento cade, non al giro di controllo dopo
+- Pulsante di prova anche per il blu
+
+
 ## [0.9.0] - 2026-08-27
 
 ### Firmware ESP32

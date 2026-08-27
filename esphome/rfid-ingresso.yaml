@@ -40,6 +40,12 @@ api:
   encryption:
     key: !secret api_key
 
+  # Il LED segue lo stato del collegamento: appena cade, diventa blu.
+  on_client_connected:
+    - script.execute: led_pronto
+  on_client_disconnected:
+    - script.execute: led_scollegato
+
   actions:
     # ═══════════════════════════════════════════════════════════════════════
     #  Risposta del controllo accessi.
@@ -131,35 +137,45 @@ switch:
       - script.execute: led_bloccato
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  LED di stato — bicolore verde/rosso a CATODO COMUNE
+#  LED di stato — RGB a CATODO COMUNE
 #
-#  Cablaggio:  nero   → GND
-#              bianco → resistenza 220Ω → GPIO25
-#              grigio → resistenza 220Ω → GPIO26
+#  ⚠️ I COLORI DEI FILI NON CORRISPONDONO AI CANALI. Il filo VERDE porta il
+#     ROSSO. Sbagliare qui non rompe niente ma fa impazzire in fase di prova,
+#     quindi la tabella va letta e non intuita:
+#
+#        −  catodo comune   filo GIALLO  →  GND
+#        R  rosso           filo VERDE   →  220Ω  →  GPIO25
+#        G  verde           filo BLU     →  220Ω  →  GPIO26
+#        B  blu             filo VIOLA   →  220Ω  →  GPIO27
 #
 #  Le resistenze vanno messe comunque, anche se il LED sembra averle a bordo:
 #  una in più lo rende appena più tenue, una in meno brucia il LED o il pin.
 #
-#  Verde e rosso accesi insieme fanno giallo — è il terzo colore, e serve per
-#  "sto aspettando", che non è né un sì né un no.
-#
-#  25 e 26 sono uscite pulite su ESP32: niente strapping all'avvio, nessun
+#  25/26/27 sono uscite pulite su ESP32: niente strapping all'avvio, nessun
 #  conflitto con il WiFi.
 #
-#  ── SE IL LED È AD ANODO COMUNE ──
-#  Il filo nero va a 3V3 invece che a GND, e qui si aggiunge `inverted: true`
-#  sotto ciascun output: i pin devono tirare a massa invece che alimentare.
-#
-#  ── SE È UN RGB A TRE COLORI ──
-#  Terzo output su GPIO27 e si torna a `light: platform: rgb`.
+#  Se il LED fosse ad ANODO COMUNE, il filo comune andrebbe a 3V3 e servirebbe
+#  `inverted: true` su ciascun output.
 # ═══════════════════════════════════════════════════════════════════════════
 output:
   - platform: ledc
     pin: GPIO25
-    id: led_verde
+    id: canale_r
   - platform: ledc
     pin: GPIO26
-    id: led_rosso
+    id: canale_g
+  - platform: ledc
+    pin: GPIO27
+    id: canale_b
+
+light:
+  - platform: rgb
+    name: "LED stato"
+    id: led_stato
+    red: canale_r
+    green: canale_g
+    blue: canale_b
+    restore_mode: ALWAYS_OFF
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  TAMPER
@@ -333,59 +349,94 @@ script:
             - switch.turn_off: buzzer
             - delay: 400ms
 
-  # LED a riposo: verde molto tenue = "sono qui e leggo"
+  # LED a riposo: verde molto tenue = "sono qui e leggo".
+  # Tenue di proposito: è una spia che sta fuori casa tutta la notte.
   - id: led_pronto
     mode: restart
     then:
       - if:
           condition:
-            switch.is_on: lettura_abilitata
+            not:
+              api.connected:
           then:
-            - output.set_level:
-                id: led_verde
-                level: 8%
-            - output.turn_off: led_rosso
+            - script.execute: led_scollegato
           else:
-            - script.execute: led_bloccato
+            - if:
+                condition:
+                  switch.is_on: lettura_abilitata
+                then:
+                  - light.turn_on:
+                      id: led_stato
+                      red: 0%
+                      green: 100%
+                      blue: 0%
+                      brightness: 8%
+                else:
+                  - script.execute: led_bloccato
 
   # Verde pieno: accesso consentito
   - id: led_ok
     mode: restart
     then:
-      - output.set_level:
-          id: led_verde
-          level: 100%
-      - output.turn_off: led_rosso
+      - light.turn_on:
+          id: led_stato
+          red: 0%
+          green: 100%
+          blue: 0%
+          brightness: 100%
 
   # Rosso pieno: rifiutato
   - id: led_ko
     mode: restart
     then:
-      - output.turn_off: led_verde
-      - output.set_level:
-          id: led_rosso
-          level: 100%
+      - light.turn_on:
+          id: led_stato
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 100%
 
-  # Giallo: sto aspettando la risposta. Non è né un sì né un no, e il LED lo
-  # dice invece di restare sul verde e far credere che sia già andata.
+  # Giallo: sto aspettando la risposta. Non è né un sì né un no, e restare sul
+  # verde farebbe credere che sia già andata.
   - id: led_attesa
     mode: restart
     then:
-      - output.set_level:
-          id: led_verde
-          level: 60%
-      - output.set_level:
-          id: led_rosso
-          level: 60%
+      - light.turn_on:
+          id: led_stato
+          red: 100%
+          green: 80%
+          blue: 0%
+          brightness: 70%
 
-  # LED bloccato: rosso fisso, il segnale che il lettore non legge più
+  # Rosso fisso: il lettore non legge più (sistema in allarme)
   - id: led_bloccato
     mode: restart
     then:
-      - output.turn_off: led_verde
-      - output.set_level:
-          id: led_rosso
-          level: 60%
+      - light.turn_on:
+          id: led_stato
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 60%
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #  Blu fisso: il nodo non parla con Home Assistant.
+  #
+  #  È il colore che il terzo canale ci ha regalato, e serve più di quanto
+  #  sembri: senza, un lettore isolato dalla rete e un lettore bloccato per
+  #  allarme sono indistinguibili da fuori — entrambi non aprono. Ma vogliono
+  #  due interventi opposti: uno è "guarda il WiFi", l'altro è "sblocca
+  #  l'impianto". Chi arriva alla porta deve poterlo capire senza entrare.
+  # ═══════════════════════════════════════════════════════════════════════
+  - id: led_scollegato
+    mode: restart
+    then:
+      - light.turn_on:
+          id: led_stato
+          red: 0%
+          green: 0%
+          blue: 100%
+          brightness: 40%
 
 button:
   - platform: template
@@ -419,6 +470,10 @@ button:
     name: "Test LED giallo"
     on_press:
       - script.execute: led_attesa
+  - platform: template
+    name: "Test LED blu"
+    on_press:
+      - script.execute: led_scollegato
 
 # All'avvio il LED dice subito in che stato è il lettore. Si aspetta un
 # attimo: `restore_mode` deve aver già ripristinato l'interruttore di lettura,
