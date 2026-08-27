@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-27
+
 ### Aggiunto
 
 - **Il pannello dice cos'e' successo quando si passa una tessera al lettore**,
