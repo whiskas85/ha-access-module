@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-27
+
 ### Firmware ESP32
 
 - **Il tamper è cablato fail-safe: manomissione = circuito aperto.** Con
@@ -25,7 +27,6 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
   sì né un no: restare sul verde farebbe credere che sia già andata
   - Tre pulsanti di prova per i colori, per accorgersi che bianco e grigio
     sono invertiti prima di montare tutto nella scatola
-
 
 ## [0.8.4] - 2026-08-27
 
