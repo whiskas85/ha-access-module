@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-08-27
+
 ### Corretto
 
 - **Annullato lo scambio dei canali del LED introdotto nella 0.10.1: era
@@ -23,7 +25,6 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
     un canale alla volta**, e distingue le due cose che si confondono: i nomi
     dei fili non corrispondono ai canali (il filo verde porta il rosso), ma la
     serigrafia R/G/B sì
-
 
 ## [0.11.0] - 2026-08-27
 
