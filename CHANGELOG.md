@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-27
+
 ### Corretto
 
 - **Il pannello restava su «Impossibile leggere lo stato» e nessuna scheda
@@ -31,7 +33,6 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
   la compilazione, si vedeva solo come «Impossibile leggere lo stato» senza
   alcun indizio su cosa fosse stato rinominato
 - La CI controlla anche la sintassi del pannello con `node --check`
-
 
 ## [0.8.1] - 2026-08-27
 
