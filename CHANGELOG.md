@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-08-27
+
 ### Corretto
 
 - **L'editor delle azioni compariva senza testo**: il pulsante di aggiunta era
