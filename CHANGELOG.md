@@ -8,6 +8,21 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **La pagina si rifaceva sotto le mani ogni pochi secondi**, chiudendo
+  riquadri e togliendo le spunte appena messe. Tre cause, tutte introdotte
+  dall'aggiornamento automatico
+  - Si ridisegnava a ogni giro di controllo **anche quando non era cambiato
+    niente**. Adesso il ridisegno avviene solo se lo stato e' davvero diverso
+    da quello gia' a schermo: la stragrande maggioranza dei giri non tocca
+    piu' niente
+  - Qualunque modifica non ancora salvata — non solo quelle delle notifiche —
+    ferma il ridisegno finche' non si salva o non si cambia scheda. Una spunta
+    messa vive solo nella pagina: riportarla al valore di prima significa
+    vedere la propria scelta annullarsi da sola
+  - Il blocco «Come decide il sistema» resta aperto se lo si era aperto
+
 ## [0.22.0] - 2026-08-27
 
 ### Aggiunto

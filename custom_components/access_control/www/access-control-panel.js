@@ -424,8 +424,16 @@ class AccessControlPanel extends HTMLElement {
     if (this._configDisp) return false;
     // Una notifica con modifiche non salvate: vale lo stesso motivo.
     if (this._notificheSporche?.size) return false;
+    // E qualunque altra modifica non salvata. Una spunta messa e non ancora
+    // salvata vive solo nella pagina: un ridisegno la riporterebbe al valore
+    // di prima, e chi guarda vedrebbe la propria scelta annullarsi da sola.
+    if (this._modificato) return false;
+    // Solo i campi, non i pulsanti: un pulsante resta col fuoco dopo che lo
+    // si e' premuto, e bastarebbe un clic per bloccare gli aggiornamenti a
+    // tempo indeterminato.
     const a = this.shadowRoot.activeElement;
-    return !(a && ["INPUT", "SELECT", "TEXTAREA"].includes(a.tagName));
+    const campi = ["INPUT", "SELECT", "TEXTAREA", "HA-SWITCH", "HA-CHECKBOX"];
+    return !(a && campi.includes(a.tagName));
   }
 
   _puoRinfrescare() {
@@ -442,16 +450,31 @@ class AccessControlPanel extends HTMLElement {
 
   async _carica() {
     if (!this._hass) return;
+    let prima = this._impronta;
     try {
       this._data = await this._hass.callApi("get", "access_control/state");
       this._errore = "";
     } catch (err) {
       this._errore = err?.message || "Impossibile leggere lo stato";
+      prima = null; // un errore va mostrato comunque
     }
+
+    // Si ridisegna solo se lo stato e' davvero cambiato.
+    //
+    // Il ridisegno ricostruisce la pagina da capo, quindi porta via tutto
+    // quello che non e' ancora stato salvato: spunte messe, riquadri aperti,
+    // testo scritto a meta'. Farlo a ogni giro di controllo — anche quando
+    // non era cambiato niente — voleva dire vedersi disfare il lavoro sotto
+    // le mani ogni pochi secondi.
+    this._impronta = JSON.stringify(this._data);
+    if (this._impronta === prima) return;
     this._render();
   }
 
   async _comando(payload) {
+    // Il comando porta con se' tutto quello che c'era da salvare: da qui in
+    // poi la pagina puo' tornare a rinfrescarsi.
+    this._modificato = false;
     try {
       this._data = await this._hass.callApi(
         "post",
@@ -462,6 +485,7 @@ class AccessControlPanel extends HTMLElement {
       // Il server puo' rispondere «salvato, pero'…»: una telecamera che non
       // scatta si salva lo stesso, ma va detto subito e non alla prima
       // notifica senza foto.
+      this._impronta = JSON.stringify(this._data);
       if (this._data?.avviso) this._toast(this._data.avviso);
     } catch (err) {
       this._errore = err?.body?.message || err?.message || "Comando fallito";
@@ -515,6 +539,12 @@ class AccessControlPanel extends HTMLElement {
     const nav = this.shadowRoot.querySelector("nav");
     if (nav) nav.scrollLeft = scorrimento;
 
+    this.shadowRoot
+      .querySelector("[data-ricorda-aperto]")
+      ?.addEventListener("toggle", (ev) => {
+        this._spiegaAperta = ev.target.open;
+      });
+
     this.shadowRoot.querySelectorAll("[data-menu]").forEach((el) =>
       el.addEventListener("click", () =>
         this.dispatchEvent(
@@ -528,6 +558,19 @@ class AccessControlPanel extends HTMLElement {
     // riscriverebbe i campi con i valori salvati, buttando via il testo
     // appena scritto — e la notifica di allarme e' l'ultimo posto dove si
     // vuole scoprire che una modifica non era stata presa.
+    // Qualunque campo toccato mette la pagina in «sto modificando». Non
+    // serve sapere quale: serve sapere che c'e' qualcosa da non buttare via.
+    // Una volta sola: il ridisegno sostituisce il contenuto ma non tocca la
+    // radice, quindi riagganciarli a ogni giro li accumulerebbe.
+    if (!this._ascoltoModifiche) {
+      this._ascoltoModifiche = true;
+      const segnaModifica = () => {
+        this._modificato = true;
+      };
+      this.shadowRoot.addEventListener("input", segnaModifica);
+      this.shadowRoot.addEventListener("change", segnaModifica);
+    }
+
     this.shadowRoot.querySelectorAll("[data-notifica]").forEach((box) => {
       const bottone = box.querySelector("[data-salva-notifica]");
       if (!bottone) return;
@@ -543,6 +586,7 @@ class AccessControlPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-sottotab]").forEach((el) =>
       el.addEventListener("click", () => {
         this._sottoTessere = el.dataset.sottotab;
+        this._modificato = false;
         this._render();
       }),
     );
@@ -550,6 +594,7 @@ class AccessControlPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-tab]").forEach((el) =>
       el.addEventListener("click", () => {
         this._tab = el.dataset.tab;
+        this._modificato = false;
         this._render();
         // `block: nearest` e non il centro: senza, portare in vista una
         // scheda fuori schermo trascinerebbe anche la pagina in verticale.
@@ -714,7 +759,8 @@ class AccessControlPanel extends HTMLElement {
         ${this._ultimeLetture(d.log)}
       </section>
 
-      <details class="card blocco-spiega">
+      <details class="card blocco-spiega" data-ricorda-aperto
+        ${this._spiegaAperta ? "open" : ""}>
         <summary>Come decide il sistema</summary>
         <ul class="spiega">
           <li>${icona("orologio")}<span><b>Autorizzazione</b> — le finestre
