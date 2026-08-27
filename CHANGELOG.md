@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-08-27
+
 ### Corretto
 
 - **Ogni lettura arrivava a Home Assistant con lo stesso codice `RETURNX;`
