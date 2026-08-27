@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-08-27
+
 ### Corretto
 
 - **La pagina si rifaceva sotto le mani ogni pochi secondi**, chiudendo

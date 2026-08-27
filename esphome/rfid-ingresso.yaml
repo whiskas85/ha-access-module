@@ -29,7 +29,7 @@ esphome:
   # La allinea `scripts/bump.py`, non va toccata a mano.
   project:
     name: whiskas85.controllo-accessi
-    version: "0.22.0"
+    version: "0.22.1"
   on_boot:
     # Priorità bassa: si esegue dopo il ripristino degli interruttori, così il
     # LED mostra lo stato vero e non quello di un istante prima.
