@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-27
+
 ### Aggiunto
 
 - **Ogni lettore ha la sua telecamera**, scelta dalla sua configurazione. La
