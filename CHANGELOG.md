@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-08-27
+
 ### Corretto
 
 - **L'elenco delle schede tornava all'inizio da solo.** Da telefono scorre in
