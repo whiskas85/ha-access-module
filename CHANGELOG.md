@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-27
+
 ### Modificato
 
 - **La blacklist e' una linguetta dentro la scheda Tessere**, e non piu' un
