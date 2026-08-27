@@ -132,6 +132,50 @@ const quando = (iso) => {
 // un aggiornamento di Home Assistant lascerebbe una pagina bianca al posto
 // dell'editor, e non si capirebbe perché.
 let _componentiHA = null;
+let _spuntaHA = false;
+
+async function attendiSpunta() {
+  // I due componenti arrivano nello stesso pacchetto dell'editor, ma non e'
+  // detto: dipende da cosa Home Assistant ha gia' caricato per la pagina da
+  // cui si arriva. Si aspettano un attimo e poi si prende quello che c'e'.
+  const attesa = Promise.all([
+    customElements.whenDefined("ha-checkbox"),
+    customElements.whenDefined("ha-formfield"),
+  ]);
+  const scadenza = new Promise((ok) => setTimeout(ok, 2000));
+  await Promise.race([attesa, scadenza]);
+  return (
+    !!customElements.get("ha-checkbox") && !!customElements.get("ha-formfield")
+  );
+}
+
+// Casella di spunta: quella di Home Assistant se c'e', altrimenti quella del
+// browser.
+//
+// Il ripiego non e' pigrizia: questi componenti si caricano da un pannello
+// che non e' il nostro, e se un giorno non arrivassero la scheda
+// Impostazioni resterebbe piena di caselle invisibili — cioe' inutilizzabile.
+// Meglio brutta che assente.
+//
+// L'etichetta e' HTML e non testo, perche' alcune contengono un'icona:
+// `ha-formfield` lo permette con lo slot apposito.
+function spunta(attributi, attiva, etichetta) {
+  const on = attiva ? "checked" : "";
+  if (_spuntaHA) {
+    return `<ha-formfield class="check">
+              <ha-checkbox ${attributi} ${on}></ha-checkbox>
+              <span slot="label">${etichetta}</span>
+            </ha-formfield>`;
+  }
+  return `<label class="check">
+            <input type="checkbox" ${attributi} ${on} /> ${etichetta}
+          </label>`;
+}
+
+// Vale per tutte e due le forme: `type` ce l'ha solo quella nativa.
+function eSpunta(el) {
+  return el.type === "checkbox" || el.localName === "ha-checkbox";
+}
 
 async function caricaComponentiHA() {
   if (_componentiHA !== null) return _componentiHA;
@@ -145,6 +189,7 @@ async function caricaComponentiHA() {
       await customElements.whenDefined("ha-selector");
     }
     _componentiHA = !!customElements.get("ha-selector");
+    _spuntaHA = await attendiSpunta();
   } catch (err) {
     console.warn("Controlli di Home Assistant non disponibili", err);
     _componentiHA = false;
@@ -167,6 +212,12 @@ class AccessControlPanel extends HTMLElement {
     if (!this._caricato) {
       this._caricato = true;
       this._carica();
+      // Si chiedono subito e non solo aprendo l'editor delle azioni: le
+      // caselle di spunta di tutte le schede sono le loro, e finche' non
+      // sono definite la pagina ripiega su quelle del browser.
+      caricaComponentiHA().then((ok) => {
+        if (ok) this._render();
+      });
     }
     this._ascoltaCensimenti();
     // I selettori gia' montati vanno tenuti aggiornati a mano: sono creati
@@ -1199,8 +1250,7 @@ class AccessControlPanel extends HTMLElement {
           <div class="riga">
             <label>Dalle <input type="time" data-w="start" value="${esc(w.start)}" /></label>
             <label>Alle <input type="time" data-w="end" value="${esc(w.end)}" /></label>
-            <label class="check"><input type="checkbox" data-w="enabled"
-              ${w.enabled ? "checked" : ""} /> Abilitata</label>
+            ${spunta('data-w="enabled"', w.enabled, "Abilitata")}
           </div>
 
           <div>
@@ -1208,8 +1258,11 @@ class AccessControlPanel extends HTMLElement {
             <div class="giorni">
               ${GIORNI.map(
                 (g, i) =>
-                  `<label class="check"><input type="checkbox" data-giorno-w="${i}"
-                     ${(w.days || []).includes(i) ? "checked" : ""} /> ${g}</label>`,
+                  spunta(
+                    `data-giorno-w="${i}"`,
+                    (w.days || []).includes(i),
+                    g,
+                  ),
               ).join("")}
             </div>
           </div>
@@ -1220,9 +1273,11 @@ class AccessControlPanel extends HTMLElement {
               ${["bambino", "adulto"]
                 .map(
                   (r) =>
-                    `<label class="check"><input type="checkbox" data-ruolo-w="${r}"
-                       ${(w.roles || []).includes(r) ? "checked" : ""} />
-                       ${icona(r)} ${r}</label>`,
+                    spunta(
+                      `data-ruolo-w="${r}"`,
+                      (w.roles || []).includes(r),
+                      `${icona(r)} ${r}`,
+                    ),
                 )
                 .join("")}
             </div>
@@ -1236,10 +1291,11 @@ class AccessControlPanel extends HTMLElement {
                   ? lettori
                       .map(
                         (l) =>
-                          `<label class="check"><input type="checkbox"
-                             data-lettore-w="${esc(l.device_id)}"
-                             ${(w.devices || []).includes(l.device_id) ? "checked" : ""} />
-                             ${esc(l.nome)}</label>`,
+                          spunta(
+                            `data-lettore-w="${esc(l.device_id)}"`,
+                            (w.devices || []).includes(l.device_id),
+                            esc(l.nome),
+                          ),
                       )
                       .join("")
                   : `<span class="nota">Nessun lettore registrato.</span>`
@@ -1273,12 +1329,16 @@ class AccessControlPanel extends HTMLElement {
       <section class="card">
         <h2>Oltre alle finestre</h2>
         <div class="riga">
-          <label class="check"><input type="checkbox" id="set-presence_opens_all"
-            ${d.impostazioni.presence_opens_all ? "checked" : ""} />
-            Quando c'è qualcuno in casa, ammetti tutti</label>
-          <label class="check"><input type="checkbox" id="set-nearby_opens_adults"
-            ${d.impostazioni.nearby_opens_adults ? "checked" : ""} />
-            Quando un adulto è in avvicinamento, ammetti gli adulti</label>
+          ${spunta(
+            'id="set-presence_opens_all"',
+            d.impostazioni.presence_opens_all,
+            "Quando c'è qualcuno in casa, ammetti tutti",
+          )}
+          ${spunta(
+            'id="set-nearby_opens_adults"',
+            d.impostazioni.nearby_opens_adults,
+            "Quando un adulto è in avvicinamento, ammetti gli adulti",
+          )}
         </div>
         <p class="nota">Si <b>sommano</b> alle finestre, non le scavalcano:
           sono scorciatoie per i casi che valgono sempre.</p>
@@ -1317,17 +1377,14 @@ class AccessControlPanel extends HTMLElement {
               <b>${esc(etichetta)}</b>
               <span class="sotto"><code>${esc(chiave)}</code></span>
             </div>
-            <label class="check"><input type="checkbox" data-n="attivo"
-              ${t.attivo ? "checked" : ""} /> Attiva</label>
+            ${spunta('data-n="attivo"', t.attivo, "Attiva")}
           </div>
           <div class="riga">
             <label>Destinatario
               ${selettore('data-n="service"', t.service || "", "— usa quello generale —")}
             </label>
-            <label class="check"><input type="checkbox" data-n="alta_priorita"
-              ${t.alta_priorita ? "checked" : ""} /> Alta priorità</label>
-            <label class="check"><input type="checkbox" data-n="immagine"
-              ${t.immagine ? "checked" : ""} /> Allega telecamera</label>
+            ${spunta('data-n="alta_priorita"', t.alta_priorita, "Alta priorità")}
+            ${spunta('data-n="immagine"', t.immagine, "Allega telecamera")}
           </div>
           <label>Titolo
             <input data-n="titolo" value="${esc(t.titolo || "")}" /></label>
@@ -1342,8 +1399,7 @@ class AccessControlPanel extends HTMLElement {
       <section class="card ${n.master ? "" : "spento"}">
         <h2>Master notifiche</h2>
         <div class="riga">
-          <label class="check"><input type="checkbox" id="notif-master"
-            ${n.master ? "checked" : ""} /> Notifiche attive</label>
+          ${spunta('id="notif-master"', n.master, "Notifiche attive")}
           <label>Destinatario generale
             ${selettore('id="notif-service"', n.service || "", "— nessuno —")}
           </label>
@@ -1446,15 +1502,21 @@ class AccessControlPanel extends HTMLElement {
                    value="${esc(st.alarm_threshold)}" /></label>
         </div>
         <div class="riga">
-          <label class="check"><input type="checkbox" id="set-alarm_on_disabled_card"
-            ${st.alarm_on_disabled_card ? "checked" : ""} />
-            Allarme se passa una tessera disabilitata</label>
-          <label class="check"><input type="checkbox" id="set-alarm_on_blacklist"
-            ${st.alarm_on_blacklist ? "checked" : ""} />
-            Allarme se passa una tessera in blacklist</label>
-          <label class="check"><input type="checkbox" id="set-alarm_on_tamper"
-            ${st.alarm_on_tamper ? "checked" : ""} />
-            Allarme se un lettore viene manomesso</label>
+          ${spunta(
+            'id="set-alarm_on_disabled_card"',
+            st.alarm_on_disabled_card,
+            "Allarme se passa una tessera disabilitata",
+          )}
+          ${spunta(
+            'id="set-alarm_on_blacklist"',
+            st.alarm_on_blacklist,
+            "Allarme se passa una tessera in blacklist",
+          )}
+          ${spunta(
+            'id="set-alarm_on_tamper"',
+            st.alarm_on_tamper,
+            "Allarme se un lettore viene manomesso",
+          )}
         </div>
         ${
           sic.in_allarme
@@ -1555,7 +1617,7 @@ class AccessControlPanel extends HTMLElement {
         const box = r.querySelector(`[data-finestra="${id}"]`);
         const w = { id };
         box.querySelectorAll("[data-w]").forEach((f) => {
-          w[f.dataset.w] = f.type === "checkbox" ? f.checked : f.value;
+          w[f.dataset.w] = eSpunta(f) ? f.checked : f.value;
         });
         w.days = [...box.querySelectorAll("[data-giorno-w]")]
           .filter((c) => c.checked)
@@ -1610,7 +1672,7 @@ class AccessControlPanel extends HTMLElement {
         const box = r.querySelector(`[data-notifica="${chiave}"]`);
         const conf = {};
         box.querySelectorAll("[data-n]").forEach((f) => {
-          conf[f.dataset.n] = f.type === "checkbox" ? f.checked : f.value;
+          conf[f.dataset.n] = eSpunta(f) ? f.checked : f.value;
         });
         this._comando({
           action: "set_notifications",
@@ -1931,7 +1993,7 @@ class AccessControlPanel extends HTMLElement {
         const box = r.querySelector(`.varco[data-gate="${el.dataset.saveGate}"]`);
         const gate = { id: el.dataset.saveGate };
         box.querySelectorAll("[data-g]").forEach((f) => {
-          gate[f.dataset.g] = f.type === "checkbox" ? f.checked : f.value;
+          gate[f.dataset.g] = eSpunta(f) ? f.checked : f.value;
         });
         this._comando({ action: "upsert_gate", gate });
       }),
@@ -1992,6 +2054,8 @@ class AccessControlPanel extends HTMLElement {
       label { display:flex; flex-direction:column; gap:5px; font-size:.9rem;
               color:var(--secondary-text-color); flex:1 1 190px; }
       label.check { flex-direction:row; align-items:center; gap:8px; flex:0 0 auto; font-size:.95rem; }
+      ha-formfield.check { flex:0 0 auto; --mdc-typography-body2-font-size:.95rem; }
+      ha-formfield.check span[slot="label"] { display:inline-flex; align-items:center; gap:6px; }
       input, select { padding:10px; border-radius:7px; border:1px solid var(--divider-color);
                       background:var(--card-background-color); color:var(--primary-text-color); font-size:1rem;
                       font-family:inherit; }
