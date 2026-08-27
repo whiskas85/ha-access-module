@@ -29,6 +29,7 @@ SERVICE_CLEAR_ALARM = "clear_alarm"
 SERVICE_RAISE_TAMPER = "report_tamper"
 SERVICE_CLEAR_LOG = "clear_log"
 SERVICE_START_ENROLLMENT = "start_enrollment"
+SERVICE_CANCEL_ENROLLMENT = "cancel_enrollment"
 SERVICE_START_DEVICE_LEARNING = "start_device_learning"
 SERVICE_SET_READING = "set_reading_enabled"
 
@@ -132,10 +133,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
 
     async def _start_enrollment(call: ServiceCall) -> None:
-        _data()["store"].start_enrollment(
-            call.data.get("seconds", ENROLLMENT_TIMEOUT_S),
+        await _data()["enrollment"].async_start(
             call.data.get("device", ""),
+            call.data.get("seconds", ENROLLMENT_TIMEOUT_S),
         )
+
+    async def _cancel_enrollment(_call: ServiceCall) -> None:
+        await _data()["enrollment"].async_close("servizio")
 
     async def _start_device_learning(call: ServiceCall) -> None:
         _data()["store"].start_device_learning(
@@ -181,6 +185,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         (SERVICE_OPEN_GATE, _open_gate, OPEN_GATE_SCHEMA),
         (SERVICE_SCAN, _scan, SCAN_SCHEMA),
         (SERVICE_START_ENROLLMENT, _start_enrollment, ENROLLMENT_SCHEMA),
+        (SERVICE_CANCEL_ENROLLMENT, _cancel_enrollment, None),
         (SERVICE_START_DEVICE_LEARNING, _start_device_learning, DEVICE_LEARNING_SCHEMA),
         (SERVICE_ENROLL, _enroll, ENROLL_SCHEMA),
         (SERVICE_SET_CARD_STATE, _set_state, CARD_STATE_SCHEMA),
@@ -200,6 +205,7 @@ def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_OPEN_GATE,
         SERVICE_SCAN,
         SERVICE_START_ENROLLMENT,
+        SERVICE_CANCEL_ENROLLMENT,
         SERVICE_START_DEVICE_LEARNING,
         SERVICE_ENROLL,
         SERVICE_SET_CARD_STATE,

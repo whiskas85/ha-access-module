@@ -234,6 +234,15 @@ EVENT_DEVICE_REGISTERED: Final = f"{DOMAIN}_device_registered"
 # accetta tessere nuove non deve poter restare aperta per dimenticanza.
 ENROLLMENT_TIMEOUT_S: Final = 60
 
+# Nomi delle azioni ESPHome del nodo di riferimento. Servono a indovinare i
+# servizi di un lettore appena registrato: un campo obbligatorio che nasce
+# vuoto si dimentica, e il sintomo di quella dimenticanza e' un lettore che
+# sembra guasto — suona il pattern "nessuno ha risposto" perche' davvero
+# nessuno gli ha risposto.
+ESPHOME_DOMAIN: Final = "esphome"
+SUFFIX_READER_SERVICE: Final = "_esito_accesso"
+SUFFIX_ENROLL_SERVICE: Final = "_modo_censimento"
+
 # Registrazione automatica di un LETTORE. Cosa diversa dal censimento di una
 # tessera, e va tenuta diversa: qui interessa solo sapere quale dispositivo ha
 # letto. La tessera usata per farsi riconoscere viene **scartata** — è un
@@ -325,6 +334,11 @@ DEFAULT_DEVICE: Final[dict] = {
     "reader_field": "esito",
     "reader_ok_value": "ok",
     "reader_ko_value": "ko",
+    # Spia del censimento: il lettore mostra un colore dedicato mentre la
+    # finestra e' aperta. Senza, chi preme "Aggiungi tessera" in casa ed esce
+    # al lettore non ha modo di sapere se la finestra e' ancora valida.
+    "enroll_service": "",
+    "enroll_field": "attivo",
     # Interruttore con cui Home Assistant spegne la lettura quando il sistema
     # va in allarme. Senza, in allarme il lettore continuerebbe a leggere e a
     # inondare l'API — che è esattamente ciò da cui l'allarme difende.

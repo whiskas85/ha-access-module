@@ -57,6 +57,28 @@ api:
 
   actions:
     # ═══════════════════════════════════════════════════════════════════════
+    #  Censimento aperto o chiuso.
+    #
+    #  L'ESP non decide niente nemmeno qui: non sa che cos'e' un censimento,
+    #  gli viene detto che colore fare. La finestra resta un fatto di Home
+    #  Assistant, e questa azione e' solo la spia che la racconta a chi sta
+    #  davanti al lettore — che altrimenti non ha modo di sapere se il
+    #  pulsante premuto in casa e' ancora valido.
+    # ═══════════════════════════════════════════════════════════════════════
+    - action: modo_censimento
+      variables:
+        attivo: bool
+      then:
+        - if:
+            condition:
+              lambda: 'return attivo;'
+            then:
+              - script.execute: led_censimento
+            else:
+              - script.stop: led_censimento
+              - script.execute: led_pronto
+
+    # ═══════════════════════════════════════════════════════════════════════
     #  Risposta del controllo accessi.
     #  esito: "ok" | "ko" | "allarme"
     # ═══════════════════════════════════════════════════════════════════════
@@ -259,6 +281,7 @@ pn532_i2c:
             switch.is_off: lettura_abilitata
           then:
             - logger.log: "Lettura disabilitata: scartata"
+            - script.stop: led_censimento
             - script.execute: led_bloccato
           else:
             # 3. Rate limiter locale: max 3 letture ogni 10 s.
@@ -273,6 +296,11 @@ pn532_i2c:
                 condition:
                   lambda: 'return id(scan_count) <= 3;'
                 then:
+                  # Prima del giallo: il ciclo del censimento ridipinge il LED
+                  # ogni mezzo secondo e coprirebbe l'attesa. La finestra si
+                  # chiude comunque su questa lettura — la spia sta solo
+                  # smettendo con un attimo di anticipo su Home Assistant.
+                  - script.stop: led_censimento
                   - script.execute: led_attesa
                   - script.execute: attesa_ha
                   # ═══════════════════════════════════════════════════════
@@ -445,6 +473,42 @@ script:
           brightness: 60%
 
   # ═══════════════════════════════════════════════════════════════════════
+  #  Bianco pulsante: censimento aperto, la prossima tessera viene registrata.
+  #
+  #  Pulsa invece di stare fisso perche' e' uno stato che scade: un colore
+  #  fermo si legge come "il lettore e' cosi'", uno che respira come "sta
+  #  aspettando qualcosa". E' l'unico momento in cui il lettore dice qualcosa
+  #  dello stato dell'impianto a chi lo guarda da fuori, e dura al massimo un
+  #  minuto: passato quello, o letta la tessera, torna a mentire zero.
+  #
+  #  Il ciclo lo ferma `script.stop`, da Home Assistant quando la finestra si
+  #  chiude e localmente appena arriva una lettura.
+  # ═══════════════════════════════════════════════════════════════════════
+  - id: led_censimento
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return true;'
+          then:
+            - light.turn_on:
+                id: led_stato
+                red: 100%
+                green: 100%
+                blue: 100%
+                brightness: 80%
+                transition_length: 400ms
+            - delay: 500ms
+            - light.turn_on:
+                id: led_stato
+                red: 100%
+                green: 100%
+                blue: 100%
+                brightness: 8%
+                transition_length: 400ms
+            - delay: 500ms
+
+  # ═══════════════════════════════════════════════════════════════════════
   #  Blu fisso: il nodo non parla con Home Assistant.
   #
   #  È il colore che il terzo canale ci ha regalato, e serve più di quanto
@@ -499,6 +563,10 @@ button:
     name: "Test LED blu"
     on_press:
       - script.execute: led_scollegato
+  - platform: template
+    name: "Test LED censimento"
+    on_press:
+      - script.execute: led_censimento
 
 # All'avvio il LED dice subito in che stato è il lettore. Si aspetta un
 # attimo: `restore_mode` deve aver già ripristinato l'interruttore di lettura,

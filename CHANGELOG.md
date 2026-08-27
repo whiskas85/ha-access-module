@@ -8,6 +8,44 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Il lettore mostra un colore dedicato mentre il censimento e' aperto**
+  (bianco pulsante). Il pulsante si preme in casa e la tessera si passa fuori:
+  finora, arrivando al lettore, non c'era modo di sapere se la finestra fosse
+  ancora valida. Nuova azione ESPHome `modo_censimento`
+  - Pulsa invece di stare fisso perche' e' uno stato che scade: un colore
+    fermo si legge come "il lettore e' cosi'", uno che respira come "sta
+    aspettando qualcosa"
+  - E' l'unica cosa che il lettore racconta dello stato dell'impianto a chi lo
+    guarda da fuori, e dura al massimo un minuto. Si accende **solo** sul
+    lettore su cui la finestra e' aperta: farlo pulsare anche sugli altri
+    direbbe a chi passa davanti a un'altra porta che li' basta appoggiare una
+    tessera qualsiasi
+- **Interruttore `Censimento tessera`** e servizio `cancel_enrollment`.
+  Prima il censimento si poteva aprire da automazioni e dashboard ma chiudere
+  solo dal pannello. Un interruttore e non due pulsanti perche' il censimento
+  e' uno *stato*: dura un minuto, si chiude da solo alla prima tessera, e
+  "l'ho aperto o no?" e' la domanda che ci si fa proprio mentre si e' fuori
+- **I servizi del lettore si indovinano da soli** alla registrazione, e anche
+  su un impianto gia' installato alla prima lettura utile
+  - `reader_service` nasceva vuoto, e un campo obbligatorio vuoto prima o poi
+    si dimentica. Il sintomo era il peggiore possibile: il lettore suonava il
+    pattern "non raggiungibile" e sembrava guasto, mentre il modulo aveva
+    deciso benissimo e non aveva dove mandare la risposta
+  - Nel dubbio non tocca niente: con piu' lettori si sceglie solo il nodo il
+    cui nome corrisponde al dispositivo. Indovinare quello sbagliato
+    manderebbe l'esito di una porta a un'altra
+- Il flusso del censimento e il contratto aggiornato con il nodo sono ora
+  scritti in `SPEC.md` (§8 e §14): finora esistevano solo nel codice
+
+### Modificato
+
+- La scadenza della finestra di censimento e' **attiva**: allo scadere del
+  minuto qualcuno spegne la spia. Finche' lo stato era solo un timestamp da
+  confrontare nessuno doveva farci niente, ma una spia accesa su una finestra
+  chiusa racconterebbe una cosa falsa a chi passa davanti al lettore
+
 ## [0.11.3] - 2026-08-27
 
 ### Aggiunto

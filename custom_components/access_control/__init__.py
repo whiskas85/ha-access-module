@@ -14,6 +14,7 @@ from homeassistant.loader import async_get_integration
 from .actions import async_open_gate
 from .const import DOMAIN, PLATFORMS
 from .coordinator import AccessCoordinator
+from .enrollment import EnrollmentManager
 from .evaluator import AccessEvaluator
 from .panel import async_remove_panel, async_setup_panel
 from .services import async_setup_services, async_unload_services
@@ -51,19 +52,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await store.async_save()
 
     coordinator = AccessCoordinator(hass, store)
-    evaluator = AccessEvaluator(hass, store, coordinator)
+    enrollment = EnrollmentManager(hass, store)
+    evaluator = AccessEvaluator(hass, store, coordinator, enrollment)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].update(
         {
             "store": store,
             "coordinator": coordinator,
+            "enrollment": enrollment,
             "evaluator": evaluator,
             entry.entry_id: {"config": dict(entry.data)},
         }
     )
 
     entry.async_on_unload(coordinator.async_start())
+    entry.async_on_unload(enrollment.async_shutdown)
     entry.async_on_unload(_async_subscribe_reads(hass, store, evaluator))
     entry.async_on_unload(_async_subscribe_notification_actions(hass))
 

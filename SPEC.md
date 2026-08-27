@@ -233,11 +233,16 @@ Tentativi negati oggi: 0
 
 ## 8. Contratto con il dispositivo ESPHome
 
-Il nodo `rfid-ingresso` espone un'azione e genera un evento.
+Il nodo `rfid-ingresso` espone due azioni e genera un evento.
 
 ### In ingresso a HA
 
-Evento `tag_scanned` (integrazione Tag nativa), con l'UID del tag letto.
+Evento `esphome.access_control_read`, con `uid` e `lettore`. **Non**
+`tag_scanned`: quello fa creare a HA un'entità `tag.*` per ogni UID mai visto,
+e chi cicla codici con un Flipper riempie il registro tag di spazzatura che
+resta anche dopo che se n'è andato. Il tag entra nel registro solo dopo che la
+lettura è stata validata.
+
 Il dispositivo applica già un rate limiter locale (max 3 letture / 10 s)
 indipendente da HA.
 
@@ -246,8 +251,18 @@ indipendente da HA.
 ```yaml
 action: esphome.rfid_ingresso_esito_accesso
 data:
-  esito: "ok"    # oppure "ko"
+  esito: "ok"    # oppure "ko", "allarme"
 ```
+
+```yaml
+action: esphome.rfid_ingresso_modo_censimento
+data:
+  attivo: true   # finestra di censimento aperta su questo lettore
+```
+
+La seconda è **solo una spia**: accende il colore dedicato sul LED. Il nodo
+non sa che cosa sia un censimento e continua a mandare letture identiche a
+sempre — a distinguerle è il modulo, non lui.
 
 ### Regole vincolanti
 
@@ -404,6 +419,34 @@ quindi emette sempre il pattern di timeout.
 
 ---
 ---
+
+## 14. Censimento di una tessera
+
+Il flusso, dall'inizio alla fine:
+
+1. Si apre la finestra — dall'interruttore *Censimento tessera*, dal pulsante
+   *Aggiungi tessera*, dal pannello o dal servizio `start_enrollment`.
+2. Il lettore su cui la finestra è aperta mostra il **colore dedicato**.
+   Serve perché il pulsante si preme in casa e la tessera si passa fuori: chi
+   arriva al lettore deve poter vedere che la finestra è ancora valida, senza
+   rientrare a controllare.
+3. La prima tessera letta viene **censita invece che valutata**, con UID e
+   tipo di chip rilevati da soli. Nasce senza titolare, e finché non gliene
+   viene assegnato uno non apre niente.
+4. Il lettore riceve l'esito affermativo — due bip e verde pieno.
+5. **La finestra si chiude sulla prima lettura**, non allo scadere: se
+   restasse aperta, chiunque passasse una tessera nei secondi successivi se la
+   troverebbe censita.
+
+Si chiude anche spegnendo l'interruttore, dal servizio `cancel_enrollment`, o
+da sola dopo `ENROLLMENT_TIMEOUT_S` (60 s) di inattività. In tutti i casi la
+spia sul lettore si spegne: una finestra chiusa che continua a farsi vedere
+aperta è peggio di nessuna spia.
+
+Il censimento è ammesso **solo da un lettore registrato**: una lettura da un
+dispositivo che non fa parte dell'impianto non deve poter aggiungere
+credenziali.
+
 
 # Addendum — stato di implementazione
 

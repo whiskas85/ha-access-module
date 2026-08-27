@@ -7,8 +7,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, ENROLLMENT_TIMEOUT_S
+from .const import DOMAIN
 from .entity import AccessEntity
+from .enrollment import EnrollmentManager
 
 
 async def async_setup_entry(
@@ -18,7 +19,9 @@ async def async_setup_entry(
     store, coordinator = data["store"], data["coordinator"]
     async_add_entities(
         [
-            AccessStartEnrollmentButton(entry.entry_id, store, coordinator),
+            AccessStartEnrollmentButton(
+                entry.entry_id, store, coordinator, data["enrollment"]
+            ),
             AccessUnlockReadersButton(entry.entry_id, store, coordinator),
             AccessClearLogButton(entry.entry_id, store, coordinator),
         ]
@@ -37,6 +40,16 @@ class AccessStartEnrollmentButton(AccessEntity, ButtonEntity):
     _attr_name = "Aggiungi tessera"
     _attr_icon = "mdi:card-plus"
 
+    def __init__(
+        self,
+        entry_id: str,
+        store,
+        coordinator,
+        enrollment: EnrollmentManager,
+    ) -> None:
+        super().__init__(entry_id, store, coordinator)
+        self.enrollment = enrollment
+
     @property
     def unique_id(self) -> str:
         return f"{self._entry_id}_start_enrollment"
@@ -47,7 +60,7 @@ class AccessStartEnrollmentButton(AccessEntity, ButtonEntity):
         return bool(self.store.devices)
 
     async def async_press(self) -> None:
-        self.store.start_enrollment(ENROLLMENT_TIMEOUT_S)
+        await self.enrollment.async_start()
 
 
 class AccessUnlockReadersButton(AccessEntity, ButtonEntity):

@@ -55,6 +55,7 @@ from .const import (
     SECURITY_UNKNOWN,
 )
 from .coordinator import AccessCoordinator
+from .enrollment import EnrollmentManager
 from .models import AccessEvent, Card, normalize_uid, uid_bytes
 from .notifier import async_notify, async_notify_alarm_with_open
 from .store import AccessStore
@@ -92,10 +93,12 @@ class AccessEvaluator:
         hass: HomeAssistant,
         store: AccessStore,
         coordinator: AccessCoordinator,
+        enrollment: EnrollmentManager,
     ) -> None:
         self.hass = hass
         self.store = store
         self.coordinator = coordinator
+        self.enrollment = enrollment
         # Timestamp delle letture recenti, per il rate limit lato Home
         # Assistant. Quello nel lettore non basta: un firmware sostituito lo
         # aggirerebbe, e il lettore sta fuori casa.
@@ -106,7 +109,11 @@ class AccessEvaluator:
     async def async_handle_scan(self, raw_uid: str, device_id: str = "") -> Decision:
         """Valuta una lettura e porta a termine tutto ciò che ne consegue."""
         uid = normalize_uid(raw_uid)
-        device = self.store.devices.get(device_id) or {}
+        # Non `devices.get`: qui i servizi del lettore, se non sono ancora
+        # stati scelti, vengono indovinati. Un impianto gia' installato si
+        # sistema alla prima lettura, senza che nessuno debba sapere che
+        # c'era un campo da compilare.
+        device = await self.store.async_autofill_services(device_id) or {}
 
         if device_id:
             await self.store.async_note_reader(device_id)
@@ -416,7 +423,7 @@ class AccessEvaluator:
         La finestra si chiude alla prima lettura: se restasse aperta, chiunque
         passasse una tessera nei secondi successivi se la troverebbe censita.
         """
-        self.store.cancel_enrollment()
+        await self.enrollment.async_close("tessera letta")
 
         esistente = self.store.card_by_uid(uid)
         if esistente is not None:

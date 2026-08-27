@@ -12,9 +12,10 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, slugify
 
 from .const import (
     CARD_ACTIVE,
@@ -32,6 +33,7 @@ from .const import (
     DEFAULT_NOTIFICATIONS,
     DEFAULT_SETTINGS,
     DEFAULT_WINDOW,
+    ESPHOME_DOMAIN,
     RESULT_ALARM,
     RESULT_BLACKLIST,
     RESULT_DENIED,
@@ -42,10 +44,25 @@ from .const import (
     SIGNAL_STATE_CHANGED,
     STORAGE_KEY,
     STORAGE_VERSION,
+    SUFFIX_ENROLL_SERVICE,
+    SUFFIX_READER_SERVICE,
 )
 from .models import AccessEvent, Card, detect_technology, normalize_uid
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _prefisso_nodo(hass: HomeAssistant, device_id: str) -> str:
+    """Il nome del nodo ESPHome come compare nei suoi servizi.
+
+    `rfid-ingresso` espone `esphome.rfid_ingresso_esito_accesso`: e' il nome
+    del dispositivo con i trattini sostituiti. Si passa dal nome e non
+    dall'identificativo perche' il device_id di Home Assistant non contiene
+    nessuna traccia del nome del nodo.
+    """
+    device = dr.async_get(hass).async_get(device_id)
+    nome = getattr(device, "name", "") if device else ""
+    return slugify(nome) if nome else ""
 
 
 def _nuovo_id() -> str:
@@ -357,6 +374,70 @@ class AccessStore:
             voce["note"] = note
         await self.async_save_and_notify()
         return nuovo
+
+    async def async_autofill_services(self, device_id: str) -> dict[str, Any]:
+        """Indovina i servizi del lettore, se non sono ancora stati scelti.
+
+        Il modulo risponde SEMPRE al lettore, anche negando: se tace, chi e'
+        alla porta sente il pattern "non raggiungibile" e crede che il sistema
+        sia guasto quando invece aveva solo deciso di no. Quella risposta pero'
+        passa da un campo di configurazione che nasce vuoto, e un campo
+        obbligatorio vuoto prima o poi si dimentica — col sintomo peggiore
+        possibile, perche' non somiglia affatto a una dimenticanza.
+
+        Qui il vuoto si riempie da solo: fra le azioni ESPHome esposte a Home
+        Assistant si cerca quella che finisce col suffisso giusto. Se ce n'e'
+        una sola, e' quella. Se ce n'e' piu' d'una si sceglie il nodo il cui
+        nome corrisponde al dispositivo, e nel dubbio non si tocca niente:
+        indovinare il lettore sbagliato manderebbe l'esito di una porta a
+        un'altra.
+
+        Non sovrascrive mai un valore gia' scritto: se qualcuno ha configurato
+        il campo a mano, ha ragione lui.
+        """
+        device = self.devices.get(device_id)
+        if device is None:
+            return {}
+
+        mancanti = [
+            (campo, suffisso)
+            for campo, suffisso in (
+                ("reader_service", SUFFIX_READER_SERVICE),
+                ("enroll_service", SUFFIX_ENROLL_SERVICE),
+            )
+            if not device.get(campo)
+        ]
+        if not mancanti:
+            return device
+
+        disponibili = list(
+            self.hass.services.async_services().get(ESPHOME_DOMAIN, {})
+        )
+        atteso = _prefisso_nodo(self.hass, device_id)
+
+        cambiato = False
+        for campo, suffisso in mancanti:
+            candidati = [s for s in disponibili if s.endswith(suffisso)]
+            scelto = ""
+            if atteso:
+                scelto = next(
+                    (s for s in candidati if s == f"{atteso}{suffisso}"), ""
+                )
+            if not scelto and len(candidati) == 1:
+                scelto = candidati[0]
+            if scelto:
+                device[campo] = f"{ESPHOME_DOMAIN}.{scelto}"
+                cambiato = True
+                _LOGGER.info(
+                    "Lettore %s: %s impostato a %s",
+                    device_id,
+                    campo,
+                    device[campo],
+                )
+
+        if cambiato:
+            await self.async_save_and_notify()
+        return device
 
     async def async_update_device(
         self, device_id: str, changes: dict[str, Any]

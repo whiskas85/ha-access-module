@@ -53,6 +53,14 @@ start_enrollment:
           max: 300
           unit_of_measurement: s
 
+cancel_enrollment:
+  name: Annulla il censimento
+  description: >-
+    Chiude subito la finestra di censimento, se e' aperta. Serve quando la si
+    apre per sbaglio o si cambia idea: senza, resta valida fino alla prima
+    tessera letta o allo scadere del minuto, e in quel minuto qualunque
+    tessera passata a un lettore registrato finisce nel registro.
+
 start_device_learning:
   name: Riconosci un lettore
   description: >-

@@ -353,6 +353,7 @@ class AccessCommandView(HomeAssistantView):
         data = hass.data[DOMAIN]
         store = data["store"]
         coordinator = data["coordinator"]
+        enrollment = data["enrollment"]
 
         try:
             if action == "set_settings":
@@ -387,10 +388,10 @@ class AccessCommandView(HomeAssistantView):
                 )
 
             elif action == "start_enrollment":
-                store.start_enrollment(ENROLLMENT_TIMEOUT_S, body.get("device", ""))
+                await enrollment.async_start(body.get("device", ""))
 
             elif action == "cancel_enrollment":
-                store.cancel_enrollment()
+                await enrollment.async_close("annullato dal pannello")
 
             elif action == "register_device":
                 await store.async_register_device(
