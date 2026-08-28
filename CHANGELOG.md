@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-08-28
+
 ### Aggiunto
 
 - **Persone create dal pannello**, per chi ha le chiavi ma non l'app: la
