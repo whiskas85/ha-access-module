@@ -20,7 +20,6 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ROLE_ADULT,
-    ROLE_CHILD,
     STATE_CLOSED,
     STATE_OPEN,
 )
@@ -198,7 +197,10 @@ class AccessCoordinator:
     def open_roles(self) -> list[str]:
         """Quali ruoli sono ammessi adesso, da almeno un lettore."""
         ruoli = []
-        for role in (ROLE_CHILD, ROLE_ADULT):
+        # Tutti i gruppi configurati, non i due predefiniti: aggiungerne uno
+        # e non vederlo mai comparire fra quelli ammessi sarebbe un gruppo
+        # che esiste solo a schermo.
+        for role in self.store.group_ids:
             ammesso, _ = self.allows(role, "")
             if ammesso:
                 ruoli.append(role)

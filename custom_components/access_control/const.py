@@ -68,6 +68,18 @@ ROLE_ADULT: Final = "adulto"
 ROLE_NONE: Final = ""
 ROLES: Final = (ROLE_CHILD, ROLE_ADULT)
 
+# I gruppi con cui si nasce, e che non si possono togliere.
+#
+# Non per affezione: «adulto» ha un significato dentro il motore — la regola
+# «un adulto in avvicinamento ammette gli adulti» lo cita per nome — e
+# togliere il gruppo lascerebbe quell'impostazione a puntare al vuoto. Gli
+# altri gruppi si aggiungono e si tolgono liberamente, perche' nessuna regola
+# li conosce: valgono solo quello che le finestre dicono di loro.
+GRUPPI_PREDEFINITI: Final[list[dict[str, str]]] = [
+    {"id": ROLE_CHILD, "nome": "Bambino"},
+    {"id": ROLE_ADULT, "nome": "Adulto"},
+]
+
 # ───────────────────────────────────────────────────────────────────────────
 #  Finestre
 #
@@ -285,6 +297,10 @@ DEFAULT_SETTINGS: Final[dict] = {
     "alarm_on_disabled_card": True,
     "alarm_on_blacklist": True,
     "alarm_on_tamper": True,
+    # I gruppi in cui si dividono le persone. Le finestre ammettono gruppi,
+    # non persone: e' quello che permette di dire «la mattina entrano i
+    # bambini» senza rifare la regola a ogni tessera nuova.
+    "gruppi": [dict(g) for g in GRUPPI_PREDEFINITI],
     "camera_entity": "",
     # Sensori porta
     "door_lock_entity": "",

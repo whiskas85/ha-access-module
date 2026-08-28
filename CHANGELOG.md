@@ -8,6 +8,24 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **I ruoli diventano gruppi, e se ne possono creare altri.** «Bambino» e
+  «adulto» restano quelli predefiniti; gli altri si aggiungono dalla scheda
+  Persone — *Pulizie*, *Ospiti*, quello che serve
+  - Le finestre ammettono gruppi e non persone: e' quello che permette di dire
+    «la mattina entrano i bambini» senza rifare la regola a ogni tessera nuova.
+    I gruppi nuovi compaiono da soli fra quelli scegliibili in ogni finestra
+  - I due predefiniti non si tolgono, e non per affezione: «adulto» ha un
+    significato dentro il motore — la regola «un adulto in avvicinamento
+    ammette gli adulti» lo cita per nome — e toglierlo lascerebbe
+    quell'impostazione a puntare al vuoto
+  - Togliendo un gruppo, chi ci stava resta **senza gruppo** e non apre piu'
+    niente; le finestre che lo ammettevano lo perdono dall'elenco. Brusco e
+    voluto: spostare quelle persone in un gruppo scelto da noi vorrebbe dire
+    dare permessi che nessuno ha deciso
+  - A schermo compare il **nome** del gruppo, non il suo identificativo
+
 ## [0.23.0] - 2026-08-28
 
 ### Aggiunto

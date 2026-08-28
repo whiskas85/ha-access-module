@@ -42,6 +42,8 @@ const STATO_ETICHETTA = {
 // Icone Material Design Icons, inline: il pannello vive in uno shadow root e
 // non eredita il set di icone del frontend, quindi i path se li porta dietro.
 const ICONE = {
+  gruppo:
+    "M12 5.5A3.5 3.5 0 1 1 8.5 9 3.5 3.5 0 0 1 12 5.5M5 8a2.5 2.5 0 1 1-2.5 2.5A2.5 2.5 0 0 1 5 8m14 0a2.5 2.5 0 1 1-2.5 2.5A2.5 2.5 0 0 1 19 8M5 13.75c0-1.24 1.79-2.25 4-2.25l.31.01A6.6 6.6 0 0 0 8 15v3H5.5A1.5 1.5 0 0 1 4 16.5v-2.75zm14 0v2.75a1.5 1.5 0 0 1-1.5 1.5H16v-3a6.6 6.6 0 0 0-1.31-3.49l.31-.01c2.21 0 4 1.01 4 2.25M12 12.5c2.67 0 4.5 1.34 4.5 3v2.25A1.25 1.25 0 0 1 15.25 19h-6.5A1.25 1.25 0 0 1 7.5 17.75V15.5c0-1.66 1.83-3 4.5-3",
   menu: "M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z",
   check:
     "M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20m-1 14.5 7-7L16.59 8 11 13.67 7.91 10.59 6.5 12z",
@@ -89,6 +91,10 @@ const ICONE = {
   togliRuolo:
     "M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c1.2 0 2.34.13 3.36.37l-1.7 1.7c-.54-.05-1.1-.07-1.66-.07-3.09 0-6 1.29-6 2v1h5.43l-2 2H4v-2c0-2.66 5.33-4 8-4M22.11 21.46 20.7 22.87 18.5 20.68l-2.2 2.19-1.41-1.41 2.19-2.2-2.19-2.2 1.41-1.41 2.2 2.19 2.2-2.19 1.41 1.41-2.19 2.2z",
 };
+
+// Un gruppo aggiunto a mano non ha un'icona sua: prende quella generica
+// invece di lasciare un buco dove gli altri hanno un simbolo.
+const iconaGruppo = (id) => icona(ICONE[id] ? id : "gruppo");
 
 const icona = (nome, cls = "") => {
   const d = ICONE[nome] || "";
@@ -1026,6 +1032,8 @@ class AccessControlPanel extends HTMLElement {
   _vistaPersone(d) {
     const persone = d.persone || [];
     const tessere = d.tessere || [];
+    const gruppi = d.opzioni.gruppi || [];
+    const predefiniti = ["bambino", "adulto"];
 
     if (!persone.length) {
       return `
@@ -1044,12 +1052,14 @@ class AccessControlPanel extends HTMLElement {
         const dove =
           p.stato === "home" ? "in casa" : p.stato === "not_home" ? "fuori" : p.stato;
 
-        const bottoni = ["bambino", "adulto"]
+        const bottoni = gruppi
           .map(
-            (r) =>
+            (g) =>
               `<button class="${p.ruolo ? "mini" : "scegli-ruolo"} ${
-                p.ruolo === r ? "ok" : ""
-              }" data-ruolo="${esc(p.entity_id)}|${r}">${icona(r)}${r}</button>`,
+                p.ruolo === g.id ? "ok" : ""
+              }" data-ruolo="${esc(p.entity_id)}|${esc(g.id)}">${iconaGruppo(
+                g.id,
+              )}${esc(g.nome)}</button>`,
           )
           .join("");
 
@@ -1062,7 +1072,9 @@ class AccessControlPanel extends HTMLElement {
                 <span class="sotto">
                   ${
                     p.ruolo
-                      ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>`
+                      ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(
+                          p.ruolo_nome || p.ruolo,
+                        )}</span>`
                       : `<span class="tag ruolo-mancante">${icona("alert")} ruolo da assegnare</span>`
                   }
                   ${
@@ -1104,7 +1116,46 @@ class AccessControlPanel extends HTMLElement {
       })
       .join("");
 
+    const schedeGruppi = gruppi
+      .map((g) => {
+        const quante = persone.filter((p) => p.ruolo === g.id).length;
+        return `
+          <div class="gruppo-riga">
+            ${iconaGruppo(g.id)}
+            <span class="gruppo-nome">${esc(g.nome)}</span>
+            <span class="uid">${quante} ${
+              quante === 1 ? "persona" : "persone"
+            }</span>
+            ${
+              predefiniti.includes(g.id)
+                ? `<span class="tag">predefinito</span>`
+                : `<button class="mini danger" data-togli-gruppo="${esc(g.id)}"
+                     title="Togli il gruppo">${icona("delete")}</button>`
+            }
+          </div>`;
+      })
+      .join("");
+
     return `
+      <section class="card">
+        <h2>Gruppi</h2>
+        <p class="nota">Le finestre ammettono <b>gruppi</b>, non persone: è
+          quello che permette di dire «la mattina entrano i bambini» senza
+          rifare la regola a ogni tessera nuova. Una persona sta in un gruppo
+          solo.</p>
+        <div class="gruppi-elenco">${schedeGruppi}</div>
+        <div class="riga">
+          <input id="nuovo-gruppo" placeholder="Nuovo gruppo — es. «Pulizie», «Ospiti»" />
+          <button data-act="aggiungi-gruppo">${icona("piu")} Aggiungi gruppo</button>
+        </div>
+        <p class="nota"><b>Bambino</b> e <b>adulto</b> non si possono togliere:
+          il motore li cita per nome — «un adulto in avvicinamento ammette gli
+          adulti» è una regola scritta su quel gruppo. Gli altri si tolgono
+          quando si vuole: chi ci stava resta <b>senza gruppo</b> e non apre
+          più niente finché non gliene dai un altro, e le finestre che lo
+          ammettevano lo perdono dall'elenco.</p>
+      </section>
+
       <section class="card">
         <h2>Aggiungi una persona</h2>
         <p class="nota">Per chi ha le chiavi ma non l'app: la nonna, chi viene
@@ -1156,7 +1207,7 @@ class AccessControlPanel extends HTMLElement {
     // si sta facendo un'altra cosa. Resta il richiamo quando manca, perché
     // quello riguarda le tessere: finché non c'è, non aprono.
     const ruolo = p.ruolo
-      ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>`
+      ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo_nome || p.ruolo)}</span>`
       : `<span class="tag ruolo-mancante">${icona("alert")} ruolo da assegnare</span>`;
 
     const sceltaRuolo = p.ruolo
@@ -1750,14 +1801,13 @@ class AccessControlPanel extends HTMLElement {
           <div>
             <span class="etichetta">Chi può entrare</span>
             <div class="ruoli">
-              ${["bambino", "adulto"]
-                .map(
-                  (r) =>
-                    spunta(
-                      `data-ruolo-w="${r}"`,
-                      (w.roles || []).includes(r),
-                      `${icona(r)} ${r}`,
-                    ),
+              ${(d.opzioni.gruppi || [])
+                .map((g) =>
+                  spunta(
+                    `data-ruolo-w="${esc(g.id)}"`,
+                    (w.roles || []).includes(g.id),
+                    `${iconaGruppo(g.id)} ${esc(g.nome)}`,
+                  ),
                 )
                 .join("")}
             </div>
@@ -2440,6 +2490,36 @@ class AccessControlPanel extends HTMLElement {
       this._render();
     });
 
+    r.querySelector('[data-act="aggiungi-gruppo"]')?.addEventListener(
+      "click",
+      () => {
+        const campo = r.getElementById("nuovo-gruppo");
+        const nome = (campo?.value || "").trim();
+        if (!nome) {
+          this._errore = "Serve un nome per il gruppo.";
+          this._render();
+          return;
+        }
+        this._comando({ action: "add_group", nome });
+      },
+    );
+
+    r.querySelectorAll("[data-togli-gruppo]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (
+          confirm(
+            "Togliere questo gruppo? Chi ci sta dentro resta senza gruppo e " +
+              "non aprirà più niente finché non gliene assegni un altro.",
+          )
+        ) {
+          this._comando({
+            action: "remove_group",
+            group_id: el.dataset.togliGruppo,
+          });
+        }
+      }),
+    );
+
     r.querySelector('[data-act="aggiungi-persona"]')?.addEventListener(
       "click",
       () => {
@@ -2648,6 +2728,10 @@ class AccessControlPanel extends HTMLElement {
                                          color:var(--secondary-text-color); }
       .blocco-spiega[open] > summary::before { transform:rotate(90deg); }
       .blocco-spiega > summary + * { margin-top:14px; }
+      .gruppi-elenco { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+      .gruppo-riga { display:flex; align-items:center; gap:10px; padding:10px 12px;
+                     border:1px solid var(--divider-color); border-radius:8px; }
+      .gruppo-nome { font-weight:600; flex:1; }
       .sotto-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
       .sotto-nav .tab { display:inline-flex; align-items:center; gap:7px; padding:8px 16px;
                         font-size:.95rem; border:1px solid var(--divider-color); }

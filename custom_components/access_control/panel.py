@@ -25,7 +25,6 @@ from .const import (
     PANEL_TITLE,
     PANEL_URL,
     REASON_LABELS,
-    ROLES,
     TECHNOLOGIES,
     TECHNOLOGY_SECURITY,
 )
@@ -107,6 +106,9 @@ def _persone(hass: HomeAssistant, store) -> list[dict[str, Any]]:
             "foto": foto,
             "stato": stato,
             "ruolo": store.role_of(eid),
+            "ruolo_nome": store.group_name(store.role_of(eid))
+            if store.role_of(eid)
+            else "",
             "seguita": eid in (store.settings.get("person_entities") or []),
             "locale": locale,
             "note": note,
@@ -351,7 +353,11 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             "in_allarme": store.in_alarm,
             "fallimenti": store.failure_streak,
             "negati_oggi": store.denied_today(),
-            "ruoli_ammessi": coordinator.open_roles(),
+            # I nomi, non gli identificativi: un gruppo aggiunto a mano ha
+            # un id a trattini bassi che a schermo si legge male.
+            "ruoli_ammessi": [
+                store.group_name(r) for r in coordinator.open_roles()
+            ],
         },
         "sicurezza": {
             "stato": store.security_state,
@@ -400,7 +406,8 @@ def _snapshot(hass: HomeAssistant) -> dict[str, Any]:
             "stati_tessera": list(CARD_STATES),
             "tecnologie": list(TECHNOLOGIES),
             "sicurezza_per_tecnologia": TECHNOLOGY_SECURITY,
-            "ruoli": list(ROLES),
+            "ruoli": store.group_ids,
+            "gruppi": store.groups,
             "varco_predefinito": DEFAULT_GATE,
             "finestra_predefinita": DEFAULT_WINDOW,
             "tipi_notifica": NOTIFY_LABELS,
@@ -482,6 +489,12 @@ class AccessCommandView(HomeAssistantView):
                 await store.async_assign_person(
                     body["card_id"], body.get("person", "")
                 )
+
+            elif action == "add_group":
+                await store.async_add_group(body.get("nome", ""))
+
+            elif action == "remove_group":
+                await store.async_remove_group(body["group_id"])
 
             elif action == "add_person":
                 await store.async_add_person(

@@ -183,9 +183,26 @@ L'unica cosa che non hanno è la **presenza**: il sistema non può sapere se
 sono in casa, quindi le regole che dipendono da chi c'è non le riguardano. Le
 finestre orarie sì.
 
-Il ruolo si assegna dalla scheda Persone. Senza ruolo le tessere di quella
-persona non aprono niente: non viene trattata come adulto per comodità, che
-sarebbe darle i permessi più ampi proprio perché nessuno ha detto chi è.
+### I gruppi
+
+Le persone si dividono in **gruppi**, e sono i gruppi — non le persone — che le
+finestre ammettono. È quello che permette di dire «la mattina entrano i
+bambini» senza rifare la regola a ogni tessera nuova.
+
+**Bambino** e **adulto** ci sono da subito e non si tolgono: il motore li cita
+per nome, «un adulto in avvicinamento ammette gli adulti» è una regola scritta
+su quel gruppo. Gli altri si aggiungono dalla scheda Persone — *Pulizie*,
+*Ospiti*, quello che serve — e si tolgono quando non servono più.
+
+Togliendo un gruppo, chi ci stava resta **senza gruppo** e non apre più niente
+finché non gliene viene dato un altro, e le finestre che lo ammettevano lo
+perdono dall'elenco. È brusco ed è voluto: l'alternativa sarebbe spostare
+quelle persone in un gruppo scelto dal modulo, cioè dare permessi che nessuno
+ha deciso.
+
+Senza gruppo le tessere di quella persona non aprono niente: non viene trattata
+come adulto per comodità, che sarebbe darle i permessi più ampi proprio perché
+nessuno ha detto chi è.
 
 ---
 

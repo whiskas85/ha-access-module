@@ -36,12 +36,12 @@ from .const import (
     DEFAULT_WINDOW,
     ESPHOME_DOMAIN,
     EVENT_UPDATED,
+    GRUPPI_PREDEFINITI,
     LOCAL_PERSON_PREFIX,
     RESULT_ALARM,
     RESULT_BLACKLIST,
     RESULT_DENIED,
     ROLE_NONE,
-    ROLES,
     SECURITY_ALARM,
     SECURITY_NORMAL,
     SIGNAL_STATE_CHANGED,
@@ -280,6 +280,92 @@ class AccessStore:
         """Il nome di una persona creata qui, se e' una di quelle."""
         return (self.people.get(person_id) or {}).get("nome", "")
 
+    # ── gruppi ─────────────────────────────────────────────────────────────
+
+    @property
+    def groups(self) -> list[dict[str, str]]:
+        """I gruppi configurati, con i due predefiniti garantiti.
+
+        Garantiti e non solo predefiniti: se sparissero da un salvataggio
+        andato storto, le finestre che li ammettono resterebbero a puntare a
+        gruppi inesistenti e non entrerebbe piu' nessuno — un guasto che si
+        manifesta come «la porta non si apre», il piu' difficile da leggere.
+        """
+        configurati = self.settings.get("gruppi") or []
+        gruppi = [
+            {"id": g["id"], "nome": g.get("nome") or g["id"]}
+            for g in configurati
+            if isinstance(g, dict) and g.get("id")
+        ]
+        presenti = {g["id"] for g in gruppi}
+        for standard in GRUPPI_PREDEFINITI:
+            if standard["id"] not in presenti:
+                gruppi.insert(0, dict(standard))
+        return gruppi
+
+    @property
+    def group_ids(self) -> list[str]:
+        return [g["id"] for g in self.groups]
+
+    def group_name(self, group_id: str) -> str:
+        return next(
+            (g["nome"] for g in self.groups if g["id"] == group_id), group_id
+        )
+
+    async def async_add_group(self, nome: str) -> dict[str, str]:
+        nome = (nome or "").strip()
+        if not nome:
+            raise ValueError("Serve un nome per il gruppo")
+
+        gid = slugify(nome)
+        if not gid:
+            raise ValueError(f"Nome non utilizzabile come gruppo: {nome}")
+        if gid in self.group_ids:
+            raise ValueError(f"Il gruppo «{nome}» esiste già")
+
+        gruppo = {"id": gid, "nome": nome}
+        self.settings["gruppi"] = [*self.groups, gruppo]
+        await self.async_save_and_notify()
+        return gruppo
+
+    async def async_remove_group(self, group_id: str) -> None:
+        """Toglie un gruppo, e con lui ogni riferimento.
+
+        Le persone che lo avevano restano **senza gruppo**, cioe' non aprono
+        piu' niente finche' non gliene si da' un altro. E' brusco ed e'
+        voluto: l'alternativa sarebbe spostarle in un gruppo scelto da noi,
+        cioe' dare permessi che nessuno ha deciso.
+
+        Le finestre che lo ammettevano lo perdono dall'elenco. Una finestra
+        rimasta senza gruppi non ammette nessuno — di nuovo il verso giusto:
+        una configurazione incompleta chiude, non apre.
+        """
+        if group_id in {g["id"] for g in GRUPPI_PREDEFINITI}:
+            raise ValueError(
+                "I gruppi bambino e adulto non si possono togliere: le regole "
+                "del sistema li citano per nome"
+            )
+
+        rimasti = [g for g in self.groups if g["id"] != group_id]
+        if len(rimasti) == len(self.groups):
+            raise KeyError(group_id)
+        self.settings["gruppi"] = rimasti
+
+        ruoli = {
+            persona: ruolo
+            for persona, ruolo in (self.settings.get("person_roles") or {}).items()
+            if ruolo != group_id
+        }
+        self.settings["person_roles"] = ruoli
+
+        for finestra in self.windows.values():
+            if group_id in (finestra.get("roles") or []):
+                finestra["roles"] = [
+                    r for r in finestra["roles"] if r != group_id
+                ]
+
+        await self.async_save_and_notify()
+
     def role_of(self, person: str) -> str:
         """Ruolo del titolare, stringa vuota se non è stato assegnato.
 
@@ -290,8 +376,8 @@ class AccessStore:
         return (self.settings.get("person_roles") or {}).get(person) or ROLE_NONE
 
     async def async_set_person_role(self, person: str, role: str) -> None:
-        if role and role not in ROLES:
-            raise ValueError(f"Ruolo non valido: {role}")
+        if role and role not in self.group_ids:
+            raise ValueError(f"Gruppo non valido: {role}")
         roles = dict(self.settings.get("person_roles") or {})
         if role:
             roles[person] = role
