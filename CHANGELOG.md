@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-28
+
 ### Aggiunto
 
 - **I ruoli diventano gruppi, e se ne possono creare altri.** «Bambino» e
