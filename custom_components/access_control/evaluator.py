@@ -152,6 +152,12 @@ class AccessEvaluator:
             )
         else:
             await self._async_notify(decision, event)
+            # Prima le azioni del diniego, poi il conteggio che puo' portare
+            # all'allarme: cosi' un diniego che fa scattare la soglia esegue
+            # entrambe le sequenze, nell'ordine in cui sono successe le cose.
+            await async_run_device_actions(
+                self.hass, device_id, event.to_dict(), campo="azioni_ko"
+            )
             await self._async_after_failure(decision, event, device_id)
 
         return decision
@@ -258,6 +264,16 @@ class AccessEvaluator:
     async def _async_raise_alarm(self, motivo: str, event: AccessEvent) -> None:
         if not await self.store.async_raise_alarm(motivo):
             return
+
+        # Le azioni dell'allarme partono sul lettore che l'ha fatto scattare.
+        # Solo qui dentro, cioe' solo quando l'allarme si alza davvero: se
+        # fossero legate alla soglia le rifarebbero a ogni lettura successiva,
+        # che a impianto gia' bloccato vorrebbe dire una sirena che riparte a
+        # ogni tessera passata.
+        if event.gate:
+            await async_run_device_actions(
+                self.hass, event.gate, event.to_dict(), campo="azioni_allarme"
+            )
 
         _LOGGER.warning("Sistema in allarme: %s", ALARM_LABELS.get(motivo, motivo))
         self.hass.bus.async_fire(
@@ -378,7 +394,8 @@ class AccessEvaluator:
             # Il nome, non l'entita': nel registro si salva `person.marco`
             # perche' e' quello che non cambia, ma in una notifica si legge
             # «Marco».
-            "titolare": nome_persona(self.hass, event.person) or "senza titolare",
+            "titolare": nome_persona(self.hass, self.store, event.person)
+            or "senza titolare",
             "lettore": self._nome_lettore(event.gate),
             "motivo": REASON_LABELS.get(event.reason, event.reason),
         }

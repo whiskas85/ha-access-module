@@ -33,16 +33,25 @@ def nome_dispositivo(hass: HomeAssistant, store, device_id: str) -> str:
     return (device.name_by_user or device.name or device_id) if device else device_id
 
 
-def nome_persona(hass: HomeAssistant, entity_id: str) -> str:
-    """Il nome della persona, non la sua entità.
+def nome_persona(hass: HomeAssistant, store, entity_id: str) -> str:
+    """Il nome della persona, non il suo identificativo.
 
-    Il ripiego ricava qualcosa di leggibile dall'`entity_id` invece di
-    mostrarlo così com'è: capita con una persona rimossa da Home Assistant
-    mentre le sue tessere sono ancora nel registro, e in quel caso «Marco» è
-    comunque più utile di `person.marco` a chi legge la notifica.
+    Vale per tutti e due i tipi di titolare: le `person.*` di Home Assistant e
+    quelle create qui dentro per chi ha le chiavi ma non l'app.
+
+    Il ripiego ricava qualcosa di leggibile dall'identificativo invece di
+    mostrarlo così com'è: capita con una persona rimossa mentre le sue tessere
+    sono ancora nel registro, e in quel caso «Marco» è comunque più utile di
+    `person.marco` a chi legge la notifica.
     """
     if not entity_id:
         return ""
+
+    if store is not None:
+        locale = store.person_name(entity_id)
+        if locale:
+            return locale
+
     state = hass.states.get(entity_id)
     if state:
         nome = state.attributes.get("friendly_name")

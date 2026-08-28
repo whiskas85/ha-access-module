@@ -1065,10 +1065,20 @@ class AccessControlPanel extends HTMLElement {
                       ? `<span class="tag ruolo-${esc(p.ruolo)}">${esc(p.ruolo)}</span>`
                       : `<span class="tag ruolo-mancante">${icona("alert")} ruolo da assegnare</span>`
                   }
-                  <span class="punto ${p.stato === "home" ? "acceso" : ""}"></span>${esc(dove)}
+                  ${
+                    p.locale
+                      ? `<span class="tag">creata qui</span>`
+                      : `<span class="punto ${p.stato === "home" ? "acceso" : ""}"></span>${esc(dove)}`
+                  }
                   · ${mie.length} ${mie.length === 1 ? "tessera" : "tessere"}
                 </span>
               </div>
+              ${
+                p.locale
+                  ? `<button class="mini danger" data-togli-persona="${esc(p.entity_id)}"
+                       title="Rimuovi questa persona">${icona("delete")}</button>`
+                  : ""
+              }
               <span class="conteggio">${mie.length}</span>
             </header>
             ${
@@ -1095,6 +1105,21 @@ class AccessControlPanel extends HTMLElement {
       .join("");
 
     return `
+      <section class="card">
+        <h2>Aggiungi una persona</h2>
+        <p class="nota">Per chi ha le chiavi ma non l'app: la nonna, chi viene
+          a fare le pulizie, un ospite fisso. Non serve che esista in Home
+          Assistant — da qui in poi vale come qualunque altro titolare, prende
+          un ruolo e le finestre la fanno entrare in base a quello.</p>
+        <div class="riga">
+          <input id="nuova-persona" placeholder="Nome e cognome" />
+          <button data-act="aggiungi-persona">${icona("piu")} Aggiungi</button>
+        </div>
+        <p class="nota">Quello che non avrà: la <b>presenza</b>. Il sistema non
+          può sapere se è in casa, quindi le regole che dipendono da chi c'è
+          non la riguardano — le finestre orarie sì.</p>
+      </section>
+
       <section class="card">
         <h2>Chi può entrare, e con che permessi</h2>
         <p class="nota">Il ruolo non è un'etichetta: è quello che le finestre
@@ -1157,7 +1182,11 @@ class AccessControlPanel extends HTMLElement {
             <b>${esc(p.nome)}</b>
             <span class="sotto">
               ${ruolo}
-              <span class="punto ${p.stato === "home" ? "acceso" : ""}"></span>${esc(dove)}
+              ${
+                p.locale
+                  ? `<span class="tag">creata qui</span>`
+                  : `<span class="punto ${p.stato === "home" ? "acceso" : ""}"></span>${esc(dove)}`
+              }
               · ${esc(dettaglio)}
             </span>
           </div>
@@ -1442,7 +1471,26 @@ class AccessControlPanel extends HTMLElement {
             : `<p class="nota">${icona("alert")} Nessun varco definito: creane
                  uno nella scheda <b>Varchi</b> per poterlo aprire da qui.</p>`
         }
-        <div class="editor-azioni" data-editor-azioni="${esc(id)}"></div>
+        <div class="editor-azioni" data-editor-azioni="${esc(id)}"
+             data-campo="azioni"></div>
+
+        <h2>Cosa fa quando una tessera è rifiutata</h2>
+        <p class="nota">Vale per <b>ogni</b> diniego, qualunque ne sia il
+          motivo — tessera sconosciuta, disabilitata, fuori orario. Il motivo
+          vero ce l'hai in <code>{{ accesso.motivo }}</code>, ma al lettore non
+          arriva: da fuori un rifiuto è indistinguibile dall'altro, ed è
+          voluto. Lasciala vuota se un diniego deve solo essere tracciato.</p>
+        <div class="editor-azioni" data-editor-azioni="${esc(id)}"
+             data-campo="azioni_ko"></div>
+
+        <h2>Cosa fa quando scatta l'allarme</h2>
+        <p class="nota">Parte quando i dinieghi di fila superano la soglia, o
+          per una tessera in blacklist, o per una manomissione — <b>una volta
+          sola</b>, nel momento in cui l'allarme si alza. Non a ogni lettura
+          successiva: a impianto già bloccato sarebbe una sirena che riparte a
+          ogni tessera passata.</p>
+        <div class="editor-azioni" data-editor-azioni="${esc(id)}"
+             data-campo="azioni_allarme"></div>
 
         <h2>Risposta al lettore</h2>
         <p class="nota">Va data sempre, anche negando: se il modulo tace, il
@@ -1494,13 +1542,18 @@ class AccessControlPanel extends HTMLElement {
     this._selettori = [];
     contenitori.forEach((box) => {
       const deviceId = box.dataset.editorAzioni;
+      // Un lettore ha tre sequenze — consentito, negato, allarme — e ognuna
+      // ha il suo editor: la chiave le tiene distinte, altrimenti si
+      // sovrascriverebbero a vicenda.
+      const campo = box.dataset.campo || "azioni";
+      const chiave = `${deviceId}|${campo}`;
       const device = (this._data?.dispositivi || []).find(
         (x) => x.device_id === deviceId,
       );
       // Quello che si sta modificando ha la precedenza su quello salvato:
       // un rimontaggio a meta' modifica riporterebbe l'editor indietro.
       const azioni =
-        this._azioniInModifica?.[deviceId] ?? (device?.azioni || []);
+        this._azioniInModifica?.[chiave] ?? (device?.[campo] || []);
       box.innerHTML = "";
 
       if (!disponibili) {
@@ -1515,7 +1568,7 @@ class AccessControlPanel extends HTMLElement {
         area.className = "json-azioni";
         area.rows = 8;
         area.value = JSON.stringify(azioni, null, 2);
-        area.dataset.jsonAzioni = deviceId;
+        area.dataset.jsonAzioni = chiave;
         box.append(nota, area);
         return;
       }
@@ -1529,7 +1582,7 @@ class AccessControlPanel extends HTMLElement {
       sel.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
         this._azioniInModifica = this._azioniInModifica || {};
-        this._azioniInModifica[deviceId] = ev.detail.value;
+        this._azioniInModifica[chiave] = ev.detail.value;
         // `ha-selector` e' controllato: disegna quello che ha in `value` e
         // si aspetta che sia chi lo ospita a ridarglielo aggiornato. Senza
         // questa riga l'azione appena aggiunta finisce nello stato del
@@ -1542,12 +1595,13 @@ class AccessControlPanel extends HTMLElement {
     });
   }
 
-  _azioniCorrenti(deviceId) {
-    if (this._azioniInModifica && deviceId in this._azioniInModifica) {
-      return this._azioniInModifica[deviceId];
+  _azioniCorrenti(deviceId, campo = "azioni") {
+    const chiave = `${deviceId}|${campo}`;
+    if (this._azioniInModifica && chiave in this._azioniInModifica) {
+      return this._azioniInModifica[chiave];
     }
     const area = this.shadowRoot.querySelector(
-      `[data-json-azioni="${deviceId}"]`,
+      `[data-json-azioni="${chiave}"]`,
     );
     if (area) {
       try {
@@ -1559,7 +1613,7 @@ class AccessControlPanel extends HTMLElement {
     const device = (this._data?.dispositivi || []).find(
       (x) => x.device_id === deviceId,
     );
-    return device?.azioni || [];
+    return device?.[campo] || [];
   }
 
   // ── varchi ───────────────────────────────────────────────────────────
@@ -2196,7 +2250,7 @@ class AccessControlPanel extends HTMLElement {
           return;
         }
         this._azioniInModifica = this._azioniInModifica || {};
-        this._azioniInModifica[deviceId] = [
+        this._azioniInModifica[`${deviceId}|azioni`] = [
           ...(correnti || []),
           { action: "access_control.open_gate", data: { gate: gateId } },
         ];
@@ -2205,7 +2259,7 @@ class AccessControlPanel extends HTMLElement {
         this._comando({
           action: "set_device",
           device_id: deviceId,
-          changes: { azioni: this._azioniInModifica[deviceId] },
+          changes: { azioni: this._azioniInModifica[`${deviceId}|azioni`] },
         });
       }),
     );
@@ -2214,15 +2268,18 @@ class AccessControlPanel extends HTMLElement {
       el.addEventListener("click", () => {
         const id = el.dataset.salvaConfig;
         const box = r.querySelector(`[data-config="${id}"]`);
-        let azioni;
+        let changes;
         try {
-          azioni = this._azioniCorrenti(id);
+          changes = {
+            azioni: this._azioniCorrenti(id, "azioni"),
+            azioni_ko: this._azioniCorrenti(id, "azioni_ko"),
+            azioni_allarme: this._azioniCorrenti(id, "azioni_allarme"),
+          };
         } catch (err) {
           this._errore = err.message;
           this._render();
           return;
         }
-        const changes = { azioni };
         box.querySelectorAll("[data-c]").forEach((f) => {
           changes[f.dataset.c] = f.value;
         });
@@ -2382,6 +2439,39 @@ class AccessControlPanel extends HTMLElement {
       this._assegna = null;
       this._render();
     });
+
+    r.querySelector('[data-act="aggiungi-persona"]')?.addEventListener(
+      "click",
+      () => {
+        const campo = r.getElementById("nuova-persona");
+        const nome = (campo?.value || "").trim();
+        if (!nome) {
+          this._errore = "Serve un nome per aggiungere una persona.";
+          this._render();
+          return;
+        }
+        this._comando({ action: "add_person", nome });
+      },
+    );
+
+    r.querySelectorAll("[data-togli-persona]").forEach((el) =>
+      el.addEventListener("click", () => {
+        // Le tessere non si toccano: tornano senza titolare, che e' uno stato
+        // visibile. Cancellarle sarebbe il modo piu' rapido per perdere il
+        // ricordo di una tessera che sta ancora in giro in una tasca.
+        if (
+          confirm(
+            "Rimuovere questa persona? Le sue tessere restano nel registro, " +
+              "senza titolare — e finché non gliene assegni uno non aprono nulla.",
+          )
+        ) {
+          this._comando({
+            action: "remove_person",
+            person_id: el.dataset.togliPersona,
+          });
+        }
+      }),
+    );
 
     r.querySelectorAll("[data-ruolo]").forEach((el) =>
       el.addEventListener("click", () => {

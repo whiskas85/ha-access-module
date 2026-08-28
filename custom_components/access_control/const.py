@@ -330,10 +330,25 @@ DEFAULT_GATE: Final[dict] = {
 #  Non un formato mio: così l'editor grafico è quello vero e non c'è niente
 #  da tradurre fra quello che si vede e quello che gira.
 # ───────────────────────────────────────────────────────────────────────────
+# Prefisso degli identificativi delle persone create qui dentro.
+#
+# Non tutti quelli che entrano in una casa sono un'entita' di Home Assistant:
+# la nonna e chi viene a fare le pulizie hanno bisogno delle chiavi e non di
+# un'app sul telefono. Il prefisso li distingue dalle `person.*` senza dover
+# guardare altrove, e li tiene compatibili con tutto il resto — ruoli e
+# finestre lavorano su una stringa, non gli interessa da dove viene.
+LOCAL_PERSON_PREFIX: Final = "locale."
+
 DEFAULT_DEVICE: Final[dict] = {
     "nome": "",
     "note": "",
     "azioni": [],
+    # Cosa fare quando la tessera NON e' valida, e cosa fare quando i dinieghi
+    # di fila fanno scattare l'allarme. Vuote di default: il caso normale e'
+    # che un diniego non faccia niente oltre a essere tracciato, ma chi vuole
+    # accendere una luce o far suonare qualcosa deve poterlo dire qui.
+    "azioni_ko": [],
+    "azioni_allarme": [],
     # Risposta acustica. Va data SEMPRE, anche negando: se il modulo tace, il
     # dispositivo emette il pattern "non raggiungibile" e chi è alla porta
     # crede che il sistema sia guasto quando era solo fuori orario.
@@ -500,6 +515,7 @@ DEFAULT_NOTIFICATIONS: Final[dict] = {
 }
 
 CONF_DEVICES: Final = "devices"
+CONF_PEOPLE: Final = "persone"
 CONF_WINDOWS: Final = "windows"
 CONF_NOTIFICATIONS: Final = "notifications"
 CONF_GATES: Final = "gates"

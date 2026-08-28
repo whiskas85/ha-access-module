@@ -25,6 +25,7 @@ from .const import (
     CONF_DEVICES,
     CONF_GATES,
     CONF_LOG,
+    CONF_PEOPLE,
     CONF_NOTIFICATIONS,
     CONF_SETTINGS,
     CONF_WINDOWS,
@@ -35,6 +36,7 @@ from .const import (
     DEFAULT_WINDOW,
     ESPHOME_DOMAIN,
     EVENT_UPDATED,
+    LOCAL_PERSON_PREFIX,
     RESULT_ALARM,
     RESULT_BLACKLIST,
     RESULT_DENIED,
@@ -82,6 +84,8 @@ class AccessStore:
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         self.notifications: dict[str, Any] = _copia_notifiche(DEFAULT_NOTIFICATIONS)
         self.cards: dict[str, Card] = {}
+        # Le persone create qui dentro, per chi non e' un'entita' di HA.
+        self.people: dict[str, dict[str, Any]] = {}
         self.gates: dict[str, dict[str, Any]] = {}
         self.windows: dict[str, dict[str, Any]] = {}
         self.log: list[AccessEvent] = []
@@ -130,6 +134,10 @@ class AccessStore:
             if card.uid:
                 self.cards[card.id] = card
 
+        self.people = {
+            p["id"]: p for p in (data.get(CONF_PEOPLE) or []) if p.get("id")
+        }
+
         self.gates = {
             g["id"]: {**DEFAULT_GATE, **g}
             for g in (data.get(CONF_GATES) or [])
@@ -160,6 +168,7 @@ class AccessStore:
                 CONF_SETTINGS: self.settings,
                 CONF_NOTIFICATIONS: self.notifications,
                 CONF_CARDS: [c.to_dict() for c in self.cards.values()],
+                CONF_PEOPLE: list(self.people.values()),
                 CONF_GATES: list(self.gates.values()),
                 CONF_WINDOWS: list(self.windows.values()),
                 CONF_DEVICES: self.devices,
@@ -206,6 +215,70 @@ class AccessStore:
             if tipo in self.notifications["tipi"]:
                 self.notifications["tipi"][tipo].update(conf)
         await self.async_save_and_notify()
+
+    async def async_add_person(self, nome: str, note: str = "") -> dict[str, Any]:
+        """Crea una persona che non esiste in Home Assistant.
+
+        Serve a chi ha le chiavi ma non l'app: la nonna, chi viene a fare le
+        pulizie. Da qui in poi vale come qualunque altro titolare — prende un
+        ruolo, e le finestre la fanno entrare in base a quello.
+
+        L'identificativo e' inventato qui e non cambia mai piu': e' quello che
+        le tessere e il registro si portano dietro, e rinominare una persona
+        non deve far perdere il filo di chi e' entrato l'anno scorso.
+        """
+        nome = (nome or "").strip()
+        if not nome:
+            raise ValueError("Serve un nome")
+
+        persona = {
+            "id": f"{LOCAL_PERSON_PREFIX}{_nuovo_id()}",
+            "nome": nome,
+            "note": note.strip(),
+            "creata": dt_util.utcnow().isoformat(),
+        }
+        self.people[persona["id"]] = persona
+        await self.async_save_and_notify()
+        return persona
+
+    async def async_update_person(
+        self, person_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        persona = self.people.get(person_id)
+        if persona is None:
+            raise KeyError(person_id)
+        for campo in ("nome", "note"):
+            if campo in changes:
+                persona[campo] = str(changes[campo]).strip()
+        if not persona["nome"]:
+            raise ValueError("Serve un nome")
+        await self.async_save_and_notify()
+        return persona
+
+    async def async_remove_person(self, person_id: str) -> None:
+        """Toglie una persona creata qui, e libera le sue tessere.
+
+        Le tessere non si cancellano: tornano senza titolare, che e' uno stato
+        gia' previsto e ben visibile. Cancellarle silenziosamente sarebbe il
+        modo piu' rapido per perdere il ricordo di una tessera che sta ancora
+        in giro in una tasca.
+        """
+        if self.people.pop(person_id, None) is None:
+            raise KeyError(person_id)
+
+        for card in self.cards.values():
+            if card.person == person_id:
+                card.person = ""
+
+        ruoli = dict(self.settings.get("person_roles") or {})
+        if ruoli.pop(person_id, None) is not None:
+            self.settings["person_roles"] = ruoli
+
+        await self.async_save_and_notify()
+
+    def person_name(self, person_id: str) -> str:
+        """Il nome di una persona creata qui, se e' una di quelle."""
+        return (self.people.get(person_id) or {}).get("nome", "")
 
     def role_of(self, person: str) -> str:
         """Ruolo del titolare, stringa vuota se non è stato assegnato.

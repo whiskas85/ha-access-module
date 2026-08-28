@@ -8,6 +8,31 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Persone create dal pannello**, per chi ha le chiavi ma non l'app: la
+  nonna, chi viene a fare le pulizie, un ospite fisso. Non serve che esistano
+  in Home Assistant
+  - Da li' in poi valgono come qualunque altro titolare: prendono un ruolo, e
+    le finestre le fanno entrare in base a quello. Ruoli e finestre lavorano
+    su una stringa e non gli interessa da dove viene, quindi non c'e' stato
+    niente da cambiare la' sotto
+  - Quello che non hanno e' la **presenza**: il sistema non puo' sapere se
+    sono in casa, quindi le regole che dipendono da chi c'e' non le riguardano
+  - Rimuovendone una, le sue tessere tornano **senza titolare** invece di
+    essere cancellate: una tessera che sta ancora in giro in una tasca deve
+    restare nel registro, e «senza titolare» e' uno stato gia' visibile
+- **Ogni lettore ha tre sequenze di azioni**, non piu' una sola: tessera
+  valida, tessera rifiutata, allarme
+  - Accendere una luce quando qualcuno entra e accenderla quando qualcuno
+    insiste con una tessera che non apre sono due decisioni diverse
+  - Quella dell'allarme parte **una volta sola**, nel momento in cui l'allarme
+    si alza. Non a ogni lettura successiva: a impianto gia' bloccato sarebbe
+    una sirena che riparte a ogni tessera passata
+  - La sequenza del diniego vale per ogni rifiuto, qualunque ne sia il motivo.
+    Il motivo vero e' in `{{ accesso.motivo }}`, ma al lettore non arriva: da
+    fuori un rifiuto resta indistinguibile dall'altro
+
 ## [0.22.1] - 2026-08-27
 
 ### Corretto

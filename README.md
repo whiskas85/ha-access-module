@@ -169,11 +169,37 @@ data:
 
 ---
 
+## Le persone
+
+I titolari sono le `person.*` di Home Assistant **più** quelle create dal
+pannello, nella scheda **Persone**.
+
+Le seconde esistono perché non tutti quelli che entrano in una casa hanno
+un'app sul telefono: la nonna e chi viene a fare le pulizie hanno bisogno
+delle chiavi, non di un'entità. Da lì in poi valgono come qualunque altro
+titolare — prendono un ruolo, e le finestre le fanno entrare in base a quello.
+
+L'unica cosa che non hanno è la **presenza**: il sistema non può sapere se
+sono in casa, quindi le regole che dipendono da chi c'è non le riguardano. Le
+finestre orarie sì.
+
+Il ruolo si assegna dalla scheda Persone. Senza ruolo le tessere di quella
+persona non aprono niente: non viene trattata come adulto per comodità, che
+sarebbe darle i permessi più ampi proprio perché nessuno ha detto chi è.
+
+---
+
 ## Le azioni
 
-Il modulo non apre. Ogni **lettore** ha la sua sequenza di azioni, ed è
+Il modulo non apre. Ogni **lettore** ha **tre** sequenze di azioni, ed è
 **l'editor delle automazioni di Home Assistant** — non un formato inventato
 qui.
+
+| Sequenza | Quando parte |
+|---|---|
+| Tessera valida | accesso consentito |
+| Tessera rifiutata | ogni diniego, qualunque sia il motivo |
+| Allarme | quando l'allarme si alza — **una volta sola**, non a ogni lettura successiva |
 
 La conseguenza è che `choose`, `if`, `delay`, `repeat` e i template funzionano
 perché non sono riscritti: sono quelli veri, eseguiti dall'helper `Script`. E

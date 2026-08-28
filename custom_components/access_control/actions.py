@@ -33,32 +33,42 @@ async def async_run_device_actions(
     device_id: str,
     variabili: dict[str, Any],
     context: Context | None = None,
+    campo: str = "azioni",
 ) -> bool:
-    """Esegue la sequenza di azioni di un lettore. Ritorna True se è andata.
+    """Esegue una sequenza di azioni di un lettore. Ritorna True se è andata.
 
     Le azioni ricevono l'evento di accesso nella variabile `accesso`, quindi
     dentro l'editor si può scrivere `{{ accesso.person }}` o
     `{{ accesso.card_nome }}` come in qualunque automazione.
+
+    `campo` sceglie quale sequenza: quella dell'accesso consentito, quella del
+    diniego o quella dell'allarme. Sono tre elenchi distinti perché sono tre
+    momenti distinti — accendere una luce quando qualcuno entra e accenderla
+    quando qualcuno insiste con una tessera che non apre sono due decisioni
+    diverse, e chi le configura deve poterle separare.
     """
     store = hass.data[DOMAIN]["store"]
     device = store.devices.get(device_id) or {}
-    sequenza = device.get("azioni") or []
+    sequenza = device.get(campo) or []
 
     if not sequenza:
-        # Nessuna azione configurata: non è un errore, è un lettore che ancora
-        # non fa niente. Va detto, perché dall'esterno sembra un guasto.
-        _LOGGER.warning(
-            "Lettore %s: accesso consentito ma nessuna azione configurata, "
-            "quindi non si è aperto niente",
-            device.get("nome") or device_id,
-        )
+        # Per l'accesso consentito il silenzio è un difetto: significa che il
+        # sistema ha detto sì e non si è aperto niente, e da fuori sembra un
+        # guasto. Per le altre due è la normalità — la maggior parte degli
+        # impianti non fa niente su un diniego, oltre a tracciarlo.
+        if campo == "azioni":
+            _LOGGER.warning(
+                "Lettore %s: accesso consentito ma nessuna azione configurata, "
+                "quindi non si è aperto niente",
+                device.get("nome") or device_id,
+            )
         return False
 
     nome = device.get("nome") or device_id
     script = Script(
         hass,
         sequenza,
-        f"Controllo Accessi — {nome}",
+        f"Controllo Accessi — {nome} ({campo})",
         DOMAIN,
         # Le azioni possono contenere `delay` o attese: senza questo, un
         # secondo passaggio della tessera mentre la sequenza è in corso non

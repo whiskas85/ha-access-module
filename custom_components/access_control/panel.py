@@ -99,22 +99,41 @@ def _persone(hass: HomeAssistant, store) -> list[dict[str, Any]]:
     una tessera va poter essere abbinata anche a chi non è ancora fra le
     persone seguite per la presenza, che è una lista con un altro scopo.
     """
-    persone = []
-    for state in hass.states.async_all("person"):
-        eid = state.entity_id
+    def _voce(eid: str, nome: str, foto: str, stato: str, locale: bool, note: str = ""):
         tessere = [c for c in store.cards.values() if c.person == eid]
-        persone.append(
-            {
-                "entity_id": eid,
-                "nome": state.attributes.get("friendly_name") or eid,
-                "foto": state.attributes.get("entity_picture") or "",
-                "stato": state.state,
-                "ruolo": store.role_of(eid),
-                "seguita": eid in (store.settings.get("person_entities") or []),
-                "tessere": len(tessere),
-                "tessere_attive": sum(1 for c in tessere if c.state == "attiva"),
-            }
+        return {
+            "entity_id": eid,
+            "nome": nome,
+            "foto": foto,
+            "stato": stato,
+            "ruolo": store.role_of(eid),
+            "seguita": eid in (store.settings.get("person_entities") or []),
+            "locale": locale,
+            "note": note,
+            "tessere": len(tessere),
+            "tessere_attive": sum(1 for c in tessere if c.state == "attiva"),
+        }
+
+    persone = [
+        _voce(
+            state.entity_id,
+            state.attributes.get("friendly_name") or state.entity_id,
+            state.attributes.get("entity_picture") or "",
+            state.state,
+            False,
         )
+        for state in hass.states.async_all("person")
+    ]
+
+    # Le persone create qui non hanno presenza, e non e' una mancanza: la
+    # presenza serve a decidere se la casa e' occupata, e chi ha le chiavi ma
+    # non il telefono non puo' dirlo. Le finestre le fanno entrare per ruolo,
+    # che e' l'informazione che le riguarda.
+    persone += [
+        _voce(p["id"], p.get("nome") or p["id"], "", "", True, p.get("note", ""))
+        for p in store.people.values()
+    ]
+
     return sorted(persone, key=lambda p: p["nome"].lower())
 
 
@@ -161,7 +180,7 @@ def _registro(hass: HomeAssistant, store) -> list[dict[str, Any]]:
     righe = []
     for evento in store.log[:200]:
         riga = evento.to_dict()
-        riga["person_nome"] = nome_persona(hass, riga.get("person") or "")
+        riga["person_nome"] = nome_persona(hass, store, riga.get("person") or "")
         riga["varco_nome"] = nome_dispositivo(hass, store, riga.get("varco") or "")
         righe.append(riga)
     return righe
@@ -253,6 +272,8 @@ def _dispositivi(hass: HomeAssistant, store) -> list[dict[str, Any]]:
                 "letture": osservato.get("letture", 0),
                 "ultima": osservato.get("ultima"),
                 "azioni": voce.get("azioni") or [],
+                "azioni_ko": voce.get("azioni_ko") or [],
+                "azioni_allarme": voce.get("azioni_allarme") or [],
                 "reader_service": voce.get("reader_service", ""),
                 "enable_switch": voce.get("enable_switch", ""),
                 "camera": voce.get("camera", ""),
@@ -461,6 +482,19 @@ class AccessCommandView(HomeAssistantView):
                 await store.async_assign_person(
                     body["card_id"], body.get("person", "")
                 )
+
+            elif action == "add_person":
+                await store.async_add_person(
+                    body.get("nome", ""), body.get("note", "")
+                )
+
+            elif action == "set_person":
+                await store.async_update_person(
+                    body["person_id"], body.get("changes") or {}
+                )
+
+            elif action == "remove_person":
+                await store.async_remove_person(body["person_id"])
 
             elif action == "set_person_role":
                 await store.async_set_person_role(
