@@ -8,6 +8,34 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **Le cose si aggiungono da una finestrella, non da un campo lasciato aperto
+  in mezzo alla pagina.** Vale per persone, gruppi, varchi e finestre
+  - Un campo sempre aperto sta li' anche quando non serve, si riempie per
+    sbaglio, e non si capisce se il testo che contiene sia gia' stato salvato
+    o no. La finestrella compare quando la si chiede, prende una cosa sola e
+    se ne va
+  - Costruita fuori dal ridisegno: aprirla non fa scattare la guardia delle
+    modifiche non salvate e non porta via niente di quello che c'e' sotto
+- **Le persone di Home Assistant e quelle del modulo stanno in due elenchi
+  distinti.** Sono due cose diverse — le prime hanno la presenza, le seconde
+  no — e mescolarle nascondeva proprio la differenza che conta quando si
+  decide chi mettere dove
+
+### Aggiunto
+
+- **Le persone create qui si possono rinominare.** Il nome era scrivibile solo
+  alla creazione: uno «Sig.ra Rossi» battuto male restava tale per sempre.
+  L'identificativo non cambia, quindi tessere e registro non perdono il filo
+
+### Corretto
+
+- **La scheda Persone usciva anticipatamente quando non c'era nessuno**,
+  rendendo irraggiungibile il pulsante per aggiungerne una. Era gia' annunciato
+  nella 0.24.1, ma quella modifica non era mai finita nel file: adesso c'e'
+  davvero
+
 ## [0.24.1] - 2026-08-29
 
 ### Modificato

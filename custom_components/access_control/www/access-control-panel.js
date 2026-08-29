@@ -838,6 +838,60 @@ class AccessControlPanel extends HTMLElement {
       </div>`;
   }
 
+  // ── finestrella per chiedere un nome ─────────────────────────────────
+  //
+  // Meglio di un campo lasciato aperto in mezzo alla pagina: quello sta li'
+  // anche quando non serve, si riempie per sbaglio, e non si capisce se il
+  // testo che contiene sia gia' stato salvato o no. La finestrella compare
+  // quando la si chiede, prende una cosa sola e se ne va.
+  //
+  // Costruita a mano invece che dentro `_render`: cosi' non passa dal
+  // ridisegno, non fa scattare la guardia delle modifiche non salvate, e
+  // aprirla non puo' portare via niente di quello che c'e' sotto.
+  _chiediNome({ titolo, spiega = "", etichetta, valore = "", conferma }) {
+    return new Promise((risolvi) => {
+      const dlg = document.createElement("dialog");
+      dlg.className = "modale";
+      dlg.innerHTML = `
+        <form method="dialog">
+          <h2>${esc(titolo)}</h2>
+          ${spiega ? `<p class="nota">${spiega}</p>` : ""}
+          <label>${esc(etichetta)}
+            <input class="campo-modale" value="${esc(valore)}" />
+          </label>
+          <div class="azioni-modale">
+            <button value="annulla" class="mini">Annulla</button>
+            <button value="ok" class="primario-mini">${esc(conferma)}</button>
+          </div>
+        </form>`;
+
+      const campo = dlg.querySelector(".campo-modale");
+      let esito = null;
+
+      dlg.addEventListener("close", () => {
+        dlg.remove();
+        risolvi(esito);
+      });
+
+      dlg.querySelector('[value="ok"]').addEventListener("click", (ev) => {
+        const testo = campo.value.trim();
+        if (!testo) {
+          // Non si chiude su un campo vuoto: chiudersi e non fare niente
+          // sembrerebbe un salvataggio andato a vuoto.
+          ev.preventDefault();
+          campo.focus();
+          return;
+        }
+        esito = testo;
+      });
+
+      this.shadowRoot.appendChild(dlg);
+      dlg.showModal();
+      campo.focus();
+      campo.select();
+    });
+  }
+
   // ── linguette dentro una pagina ──────────────────────────────────────
   //
   // Servono quando una scheda contiene due cose che si guardano in momenti
@@ -1075,19 +1129,11 @@ class AccessControlPanel extends HTMLElement {
     const gruppi = d.opzioni.gruppi || [];
     const predefiniti = ["bambino", "adulto"];
 
-    if (!persone.length) {
-      return `
-        <section class="card">
-          <h2>Persone</h2>
-          <p class="nota">${icona("alert")}
-            <span>Nessuna persona configurata in Home Assistant. Le tessere si
-            assegnano a una <code>person.*</code>, quindi finché non ce n'è
-            almeno una non possono aprire niente.</span></p>
-        </section>`;
-    }
+    // Nessuna uscita anticipata quando non c'e' nessuno: il pulsante per
+    // aggiungerne una sta piu' sotto, ed e' l'unica cosa da fare in quel
+    // momento. Uscire di qui lo renderebbe irraggiungibile.
 
-    const schede = persone
-      .map((p) => {
+    const scheda = (p) => {
         const mie = tessere.filter((c) => c.person === p.entity_id);
         const dove =
           p.stato === "home" ? "in casa" : p.stato === "not_home" ? "fuori" : p.stato;
@@ -1127,7 +1173,10 @@ class AccessControlPanel extends HTMLElement {
               </div>
               ${
                 p.locale
-                  ? `<button class="mini danger" data-togli-persona="${esc(p.entity_id)}"
+                  ? `<button class="mini" data-rinomina-persona="${esc(p.entity_id)}"
+                       data-nome-attuale="${esc(p.nome)}"
+                       title="Rinomina">${icona("check")}<span>Rinomina</span></button>
+                     <button class="mini danger" data-togli-persona="${esc(p.entity_id)}"
                        title="Rimuovi questa persona">${icona("delete")}</button>`
                   : ""
               }
@@ -1153,8 +1202,10 @@ class AccessControlPanel extends HTMLElement {
                    </div>`
             }
           </section>`;
-      })
-      .join("");
+    };
+
+    const schedeLocali = persone.filter((p) => p.locale).map(scheda).join("");
+    const schedeHA = persone.filter((p) => !p.locale).map(scheda).join("");
 
     const schedeGruppi = gruppi
       .map((g) => {
@@ -1212,8 +1263,7 @@ class AccessControlPanel extends HTMLElement {
           solo.</p>
         <div class="gruppi-elenco">${schedeGruppi}</div>
         <div class="riga">
-          <input id="nuovo-gruppo" placeholder="Nuovo gruppo — es. «Pulizie», «Ospiti»" />
-          <button data-act="aggiungi-gruppo">${icona("piu")} Aggiungi gruppo</button>
+          <button data-act="aggiungi-gruppo">${icona("piu")} Aggiungi un gruppo</button>
         </div>
         <p class="nota"><b>Bambino</b> e <b>adulto</b> non si possono togliere:
           il motore li cita per nome — «un adulto in avvicinamento ammette gli
@@ -1228,34 +1278,47 @@ class AccessControlPanel extends HTMLElement {
       ${linguette}
 
       <section class="card">
-        <h2>Aggiungi una persona</h2>
-        <p class="nota">Per chi ha le chiavi ma non l'app: la nonna, chi viene
-          a fare le pulizie, un ospite fisso. Non serve che esista in Home
-          Assistant — da qui in poi vale come qualunque altro titolare, prende
-          un ruolo e le finestre la fanno entrare in base a quello.</p>
-        <div class="riga">
-          <input id="nuova-persona" placeholder="Nome e cognome" />
-          <button data-act="aggiungi-persona">${icona("piu")} Aggiungi</button>
-        </div>
-        <p class="nota">Quello che non avrà: la <b>presenza</b>. Il sistema non
-          può sapere se è in casa, quindi le regole che dipendono da chi c'è
-          non la riguardano — le finestre orarie sì.</p>
-      </section>
-
-      <section class="card">
         <h2>Chi può entrare, e con che permessi</h2>
         <p class="nota">Il gruppo non è un'etichetta: è quello che le finestre
           orarie leggono per decidere. Una finestra dice <b>quali gruppi</b>
           ammette e quando, quindi una persona senza gruppo non rientra in
           nessuna finestra — e le sue tessere non aprono, per quante ne abbia.</p>
-        <p class="nota">Chi ha un telefono da seguire conviene che sia una
-          <code>person.*</code> di Home Assistant: solo quelle hanno la
-          presenza, e la presenza è ciò che fa funzionare «quando c'è qualcuno
-          in casa». Per tutti gli altri basta aggiungerli qui.</p>
       </section>
 
-      ${nessuno}
-      ${schede}`;
+      <section class="card">
+        <div class="intestazione-card">
+          <h2>Persone di questo modulo</h2>
+          <button data-act="aggiungi-persona">${icona("piu")} Aggiungi</button>
+        </div>
+        <p class="nota">Per chi ha le chiavi ma non l'app: la nonna, chi viene
+          a fare le pulizie, un ospite fisso. Vale come qualunque altro
+          titolare — prende un gruppo, e le finestre la fanno entrare in base a
+          quello. <b>Non ha la presenza</b>: il sistema non può sapere se è in
+          casa, quindi le regole che dipendono da chi c'è non la riguardano.</p>
+        ${
+          schedeLocali
+            ? ""
+            : `<p class="nota">Nessuna, per ora.</p>`
+        }
+      </section>
+
+      ${schedeLocali}
+
+      <section class="card">
+        <h2>Persone di Home Assistant</h2>
+        <p class="nota">Arrivano dalle <code>person.*</code> dell'impianto e si
+          aggiungono da lì, non da qui. Sono le uniche che hanno la
+          <b>presenza</b>, ed è la presenza a far funzionare «quando c'è
+          qualcuno in casa» e «un adulto in avvicinamento».</p>
+        ${
+          schedeHA
+            ? ""
+            : `<p class="nota">Nessuna <code>person.*</code> in questo
+                 impianto.</p>`
+        }
+      </section>
+
+      ${schedeHA}`;
   }
 
   _gruppoPersona(p, tessere, persone) {
@@ -1801,7 +1864,7 @@ class AccessControlPanel extends HTMLElement {
           l'azione <code>access_control.open_gate</code> — che nell'editor
           delle azioni compare come «Apri un varco».</p>
         <div class="riga">
-          <input id="nuovo-varco" placeholder="Nome del nuovo varco (es. Cancelletto)" />
+
           <button data-act="aggiungi-varco">${icona("piu")} Aggiungi varco</button>
         </div>
       </section>
@@ -1923,7 +1986,7 @@ class AccessControlPanel extends HTMLElement {
           ammette e, se vuoi, <b>su quali lettori</b>. Fuori da ogni finestra
           attiva non entra nessuno.</p>
         <div class="riga">
-          <input id="nuova-finestra" placeholder="Nome (es. Rientro da scuola)" />
+
           <button data-act="aggiungi-finestra">${icona("piu")} Aggiungi finestra</button>
         </div>
       </section>
@@ -2237,8 +2300,15 @@ class AccessControlPanel extends HTMLElement {
     );
 
     // ── varchi ─────────────────────────────────────────────────────────
-    r.querySelector('[data-act="aggiungi-varco"]')?.addEventListener("click", () => {
-      const nome = r.getElementById("nuovo-varco")?.value.trim();
+    r.querySelector('[data-act="aggiungi-varco"]')?.addEventListener("click", async () => {
+      const nome = await this._chiediNome({
+        titolo: "Nuovo varco",
+        spiega:
+          "Un'apertura fisica — porta, cancelletto, garage — definita una " +
+          "volta e riusabile da più lettori.",
+        etichetta: "Nome del varco",
+        conferma: "Crea",
+      });
       if (!nome) return;
       this._comando({ action: "upsert_gate", gate: { name: nome } });
     });
@@ -2265,8 +2335,15 @@ class AccessControlPanel extends HTMLElement {
     );
 
     // ── finestre ───────────────────────────────────────────────────────
-    r.querySelector('[data-act="aggiungi-finestra"]')?.addEventListener("click", () => {
-      const nome = r.getElementById("nuova-finestra")?.value.trim();
+    r.querySelector('[data-act="aggiungi-finestra"]')?.addEventListener("click", async () => {
+      const nome = await this._chiediNome({
+        titolo: "Nuova finestra",
+        spiega:
+          "Dice <b>quando</b> si può entrare e <b>quali gruppi</b> ammette. " +
+          "Orari e gruppi si scelgono subito dopo.",
+        etichetta: "Nome della finestra",
+        conferma: "Crea",
+      });
       if (!nome) return;
       this._comando({ action: "upsert_window", window: { name: nome } });
     });
@@ -2566,15 +2643,16 @@ class AccessControlPanel extends HTMLElement {
 
     r.querySelector('[data-act="aggiungi-gruppo"]')?.addEventListener(
       "click",
-      () => {
-        const campo = r.getElementById("nuovo-gruppo");
-        const nome = (campo?.value || "").trim();
-        if (!nome) {
-          this._errore = "Serve un nome per il gruppo.";
-          this._render();
-          return;
-        }
-        this._comando({ action: "add_group", nome });
+      async () => {
+        const nome = await this._chiediNome({
+          titolo: "Nuovo gruppo",
+          spiega:
+            "Le finestre ammettono gruppi: questo comparirà fra quelli " +
+            "scegliibili in ognuna.",
+          etichetta: "Nome del gruppo",
+          conferma: "Crea",
+        });
+        if (nome) this._comando({ action: "add_group", nome });
       },
     );
 
@@ -2596,16 +2674,34 @@ class AccessControlPanel extends HTMLElement {
 
     r.querySelector('[data-act="aggiungi-persona"]')?.addEventListener(
       "click",
-      () => {
-        const campo = r.getElementById("nuova-persona");
-        const nome = (campo?.value || "").trim();
-        if (!nome) {
-          this._errore = "Serve un nome per aggiungere una persona.";
-          this._render();
-          return;
-        }
-        this._comando({ action: "add_person", nome });
+      async () => {
+        const nome = await this._chiediNome({
+          titolo: "Nuova persona",
+          spiega:
+            "Per chi ha le chiavi ma non l'app. Il gruppo si assegna subito " +
+            "dopo: senza, le sue tessere non aprono nulla.",
+          etichetta: "Nome",
+          conferma: "Aggiungi",
+        });
+        if (nome) this._comando({ action: "add_person", nome });
       },
+    );
+
+    r.querySelectorAll("[data-rinomina-persona]").forEach((el) =>
+      el.addEventListener("click", async () => {
+        const nome = await this._chiediNome({
+          titolo: "Rinomina",
+          etichetta: "Nome",
+          valore: el.dataset.nomeAttuale || "",
+          conferma: "Salva",
+        });
+        if (!nome || nome === el.dataset.nomeAttuale) return;
+        this._comando({
+          action: "set_person",
+          person_id: el.dataset.rinominaPersona,
+          changes: { nome },
+        });
+      }),
     );
 
     r.querySelectorAll("[data-togli-persona]").forEach((el) =>
@@ -2802,6 +2898,16 @@ class AccessControlPanel extends HTMLElement {
                                          color:var(--secondary-text-color); }
       .blocco-spiega[open] > summary::before { transform:rotate(90deg); }
       .blocco-spiega > summary + * { margin-top:14px; }
+      .modale { border:none; border-radius:12px; padding:0; max-width:min(440px,92vw);
+                background:var(--card-background-color); color:var(--primary-text-color);
+                box-shadow:0 12px 40px rgba(0,0,0,.35); }
+      .modale::backdrop { background:rgba(0,0,0,.45); }
+      .modale form { display:flex; flex-direction:column; gap:12px; padding:20px; }
+      .modale h2 { margin:0; }
+      .modale label { flex:0 0 auto; }
+      .modale input { width:100%; }
+      .azioni-modale { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+      .primario-mini { padding:10px 18px; }
       .gruppi-elenco { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
       .gruppo-riga { display:flex; align-items:center; gap:10px; padding:10px 12px;
                      border:1px solid var(--divider-color); border-radius:8px; }
