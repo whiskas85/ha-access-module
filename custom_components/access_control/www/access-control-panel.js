@@ -591,7 +591,8 @@ class AccessControlPanel extends HTMLElement {
 
     this.shadowRoot.querySelectorAll("[data-sottotab]").forEach((el) =>
       el.addEventListener("click", () => {
-        this._sottoTessere = el.dataset.sottotab;
+        const [pagina, id] = el.dataset.sottotab.split("|");
+        this._sotto = { ...(this._sotto || {}), [pagina]: id };
         this._modificato = false;
         this._render();
       }),
@@ -837,6 +838,39 @@ class AccessControlPanel extends HTMLElement {
       </div>`;
   }
 
+  // ── linguette dentro una pagina ──────────────────────────────────────
+  //
+  // Servono quando una scheda contiene due cose che si guardano in momenti
+  // diversi — le tessere e quelle revocate, le persone e i gruppi. Impilarle
+  // vorrebbe dire scorrere sempre oltre l'una per arrivare all'altra.
+
+  _sottoAttivo(pagina, predefinito, ammessi) {
+    const scelto = (this._sotto || {})[pagina];
+    return scelto && (!ammessi || ammessi.includes(scelto))
+      ? scelto
+      : predefinito;
+  }
+
+  _linguette(pagina, voci, attiva) {
+    if (voci.length < 2) return "";
+    return `<nav class="sotto-nav">
+      ${voci
+        .map(
+          (v) =>
+            `<button class="tab ${v.cls || ""} ${
+              v.id === attiva ? "on" : ""
+            }" data-sottotab="${esc(pagina)}|${esc(v.id)}">${
+              v.icona || ""
+            } ${esc(v.testo)}${
+              v.conteggio === undefined
+                ? ""
+                : `<span class="conteggio-mini">${v.conteggio}</span>`
+            }</button>`,
+        )
+        .join("")}
+    </nav>`;
+  }
+
   _kv(k, v) {
     return `<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`;
   }
@@ -928,19 +962,25 @@ class AccessControlPanel extends HTMLElement {
     // arrivarci esiste solo quando c'e' qualcosa dietro. Una scheda sempre
     // presente che quasi sempre e' vuota insegna a ignorarla, e il giorno che
     // conta e' proprio quello in cui non va ignorata.
-    const sotto =
-      inBlacklist.length && this._sottoTessere === "blacklist"
-        ? "blacklist"
-        : "tessere";
+    const sotto = inBlacklist.length
+      ? this._sottoAttivo("tessere", "tessere", ["tessere", "blacklist"])
+      : "tessere";
 
     const linguette = inBlacklist.length
-      ? `<nav class="sotto-nav">
-           <button class="tab ${sotto === "tessere" ? "on" : ""}"
-             data-sottotab="tessere">${icona("rfid")} Tessere</button>
-           <button class="tab avviso ${sotto === "blacklist" ? "on" : ""}"
-             data-sottotab="blacklist">${icona("block")} Blacklist
-             <span class="conteggio-mini">${inBlacklist.length}</span></button>
-         </nav>`
+      ? this._linguette(
+          "tessere",
+          [
+            { id: "tessere", testo: "Tessere", icona: icona("rfid") },
+            {
+              id: "blacklist",
+              testo: "Blacklist",
+              icona: icona("block"),
+              cls: "avviso",
+              conteggio: inBlacklist.length,
+            },
+          ],
+          sotto,
+        )
       : "";
 
     if (sotto === "blacklist") {
@@ -1136,7 +1176,34 @@ class AccessControlPanel extends HTMLElement {
       })
       .join("");
 
-    return `
+    const sotto = this._sottoAttivo("persone", "persone", [
+      "persone",
+      "gruppi",
+    ]);
+
+    const linguette = this._linguette(
+      "persone",
+      [
+        {
+          id: "persone",
+          testo: "Persone",
+          icona: icona("adulto"),
+          conteggio: persone.length,
+        },
+        {
+          id: "gruppi",
+          testo: "Gruppi",
+          icona: icona("gruppo"),
+          conteggio: gruppi.length,
+        },
+      ],
+      sotto,
+    );
+
+    if (sotto === "gruppi") {
+      return `
+      ${linguette}
+
       <section class="card">
         <h2>Gruppi</h2>
         <p class="nota">Le finestre ammettono <b>gruppi</b>, non persone: è
@@ -1154,7 +1221,11 @@ class AccessControlPanel extends HTMLElement {
           quando si vuole: chi ci stava resta <b>senza gruppo</b> e non apre
           più niente finché non gliene dai un altro, e le finestre che lo
           ammettevano lo perdono dall'elenco.</p>
-      </section>
+      </section>`;
+    }
+
+    return `
+      ${linguette}
 
       <section class="card">
         <h2>Aggiungi una persona</h2>
@@ -1173,14 +1244,17 @@ class AccessControlPanel extends HTMLElement {
 
       <section class="card">
         <h2>Chi può entrare, e con che permessi</h2>
-        <p class="nota">Il ruolo non è un'etichetta: è quello che le finestre
-          orarie leggono per decidere. Una finestra dice <b>quali ruoli</b>
-          ammette e quando, quindi una persona senza ruolo non rientra in
+        <p class="nota">Il gruppo non è un'etichetta: è quello che le finestre
+          orarie leggono per decidere. Una finestra dice <b>quali gruppi</b>
+          ammette e quando, quindi una persona senza gruppo non rientra in
           nessuna finestra — e le sue tessere non aprono, per quante ne abbia.</p>
-        <p class="nota">Le persone arrivano da Home Assistant: si aggiungono
-          da Impostazioni → Persone, non da qui.</p>
+        <p class="nota">Chi ha un telefono da seguire conviene che sia una
+          <code>person.*</code> di Home Assistant: solo quelle hanno la
+          presenza, e la presenza è ciò che fa funzionare «quando c'è qualcuno
+          in casa». Per tutti gli altri basta aggiungerli qui.</p>
       </section>
 
+      ${nessuno}
       ${schede}`;
   }
 

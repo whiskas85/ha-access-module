@@ -8,6 +8,21 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **Persone e gruppi sono due linguette della stessa scheda**, come le tessere
+  e la blacklist. Sono due cose che si guardano in momenti diversi: i gruppi si
+  disegnano una volta, le persone si toccano di continuo, e impilarle voleva
+  dire scorrere sempre oltre l'una per arrivare all'altra
+  - Le linguette dentro una pagina sono ora una funzione sola, condivisa fra
+    le due schede che le usano
+- **La scheda Persone non esce piu' anticipatamente quando non c'e' nessuno.**
+  Diceva «nessuna persona configurata in Home Assistant» e si fermava li',
+  lasciando irraggiungibile proprio il riquadro per aggiungerne una — cioe' la
+  cosa da fare in quel momento
+  - E non e' nemmeno piu' vero che le persone arrivino solo da Home Assistant:
+    quel testo era rimasto indietro di una versione
+
 ## [0.24.0] - 2026-08-28
 
 ### Aggiunto
