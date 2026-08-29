@@ -8,6 +8,17 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **Il pulsante che aggiunge sta in alto a destra del titolo**, su tutte le
+  schede che ne hanno uno: gruppi, varchi, finestre, persone. E' lo stesso
+  posto in cui sta l'interruttore del master, ed e' dove lo si cerca
+- **Via le spiegazioni di cosa fa il pulsante**, sia sulla scheda sia dentro
+  la finestrella. Un pulsante «Aggiungi» accanto a «Gruppi» non ha bisogno di
+  una riga che dica che aggiunge un gruppo. Restano le note che dicono cose
+  che non si vedono guardando — che le finestre ammettono gruppi e non
+  persone, che fuori da ogni finestra non entra nessuno
+
 ## [0.25.0] - 2026-08-29
 
 ### Modificato

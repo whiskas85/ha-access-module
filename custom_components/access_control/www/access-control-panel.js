@@ -1256,21 +1256,17 @@ class AccessControlPanel extends HTMLElement {
       ${linguette}
 
       <section class="card">
-        <h2>Gruppi</h2>
+        <div class="intestazione-card">
+          <h2>Gruppi</h2>
+          <button data-act="aggiungi-gruppo">${icona("piu")} Aggiungi</button>
+        </div>
         <p class="nota">Le finestre ammettono <b>gruppi</b>, non persone: è
           quello che permette di dire «la mattina entrano i bambini» senza
           rifare la regola a ogni tessera nuova. Una persona sta in un gruppo
           solo.</p>
         <div class="gruppi-elenco">${schedeGruppi}</div>
-        <div class="riga">
-          <button data-act="aggiungi-gruppo">${icona("piu")} Aggiungi un gruppo</button>
-        </div>
-        <p class="nota"><b>Bambino</b> e <b>adulto</b> non si possono togliere:
-          il motore li cita per nome — «un adulto in avvicinamento ammette gli
-          adulti» è una regola scritta su quel gruppo. Gli altri si tolgono
-          quando si vuole: chi ci stava resta <b>senza gruppo</b> e non apre
-          più niente finché non gliene dai un altro, e le finestre che lo
-          ammettevano lo perdono dall'elenco.</p>
+        <p class="nota">Togliendo un gruppo, chi ci stava resta <b>senza
+          gruppo</b> e non apre più niente finché non gliene dai un altro.</p>
       </section>`;
     }
 
@@ -1290,11 +1286,9 @@ class AccessControlPanel extends HTMLElement {
           <h2>Persone di questo modulo</h2>
           <button data-act="aggiungi-persona">${icona("piu")} Aggiungi</button>
         </div>
-        <p class="nota">Per chi ha le chiavi ma non l'app: la nonna, chi viene
-          a fare le pulizie, un ospite fisso. Vale come qualunque altro
-          titolare — prende un gruppo, e le finestre la fanno entrare in base a
-          quello. <b>Non ha la presenza</b>: il sistema non può sapere se è in
-          casa, quindi le regole che dipendono da chi c'è non la riguardano.</p>
+        <p class="nota">Per chi ha le chiavi ma non l'app. <b>Non hanno la
+          presenza</b>, quindi le regole che dipendono da chi c'è in casa non
+          le riguardano.</p>
         ${
           schedeLocali
             ? ""
@@ -1307,9 +1301,7 @@ class AccessControlPanel extends HTMLElement {
       <section class="card">
         <h2>Persone di Home Assistant</h2>
         <p class="nota">Arrivano dalle <code>person.*</code> dell'impianto e si
-          aggiungono da lì, non da qui. Sono le uniche che hanno la
-          <b>presenza</b>, ed è la presenza a far funzionare «quando c'è
-          qualcuno in casa» e «un adulto in avvicinamento».</p>
+          aggiungono da lì. Sono le uniche che hanno la <b>presenza</b>.</p>
         ${
           schedeHA
             ? ""
@@ -1858,15 +1850,14 @@ class AccessControlPanel extends HTMLElement {
 
     return `
       <section class="card">
-        <h2>Varchi</h2>
+        <div class="intestazione-card">
+          <h2>Varchi</h2>
+          <button data-act="aggiungi-varco">${icona("piu")} Aggiungi</button>
+        </div>
         <p class="nota">Un varco è un'apertura fisica, definita una volta e
           riusabile da più lettori. Per farlo aprire, un lettore chiama
           l'azione <code>access_control.open_gate</code> — che nell'editor
           delle azioni compare come «Apri un varco».</p>
-        <div class="riga">
-
-          <button data-act="aggiungi-varco">${icona("piu")} Aggiungi varco</button>
-        </div>
       </section>
 
       <section class="card">${righe}</section>
@@ -1981,14 +1972,13 @@ class AccessControlPanel extends HTMLElement {
 
     return `
       <section class="card">
-        <h2>Finestre</h2>
+        <div class="intestazione-card">
+          <h2>Finestre</h2>
+          <button data-act="aggiungi-finestra">${icona("piu")} Aggiungi</button>
+        </div>
         <p class="nota">Ogni finestra dice <b>quando</b> vale, <b>chi</b>
           ammette e, se vuoi, <b>su quali lettori</b>. Fuori da ogni finestra
           attiva non entra nessuno.</p>
-        <div class="riga">
-
-          <button data-act="aggiungi-finestra">${icona("piu")} Aggiungi finestra</button>
-        </div>
       </section>
 
       <section class="card">${righe}</section>
@@ -2303,9 +2293,6 @@ class AccessControlPanel extends HTMLElement {
     r.querySelector('[data-act="aggiungi-varco"]')?.addEventListener("click", async () => {
       const nome = await this._chiediNome({
         titolo: "Nuovo varco",
-        spiega:
-          "Un'apertura fisica — porta, cancelletto, garage — definita una " +
-          "volta e riusabile da più lettori.",
         etichetta: "Nome del varco",
         conferma: "Crea",
       });
@@ -2338,9 +2325,6 @@ class AccessControlPanel extends HTMLElement {
     r.querySelector('[data-act="aggiungi-finestra"]')?.addEventListener("click", async () => {
       const nome = await this._chiediNome({
         titolo: "Nuova finestra",
-        spiega:
-          "Dice <b>quando</b> si può entrare e <b>quali gruppi</b> ammette. " +
-          "Orari e gruppi si scelgono subito dopo.",
         etichetta: "Nome della finestra",
         conferma: "Crea",
       });
@@ -2646,9 +2630,6 @@ class AccessControlPanel extends HTMLElement {
       async () => {
         const nome = await this._chiediNome({
           titolo: "Nuovo gruppo",
-          spiega:
-            "Le finestre ammettono gruppi: questo comparirà fra quelli " +
-            "scegliibili in ognuna.",
           etichetta: "Nome del gruppo",
           conferma: "Crea",
         });
@@ -2677,9 +2658,6 @@ class AccessControlPanel extends HTMLElement {
       async () => {
         const nome = await this._chiediNome({
           titolo: "Nuova persona",
-          spiega:
-            "Per chi ha le chiavi ma non l'app. Il gruppo si assegna subito " +
-            "dopo: senza, le sue tessere non aprono nulla.",
           etichetta: "Nome",
           conferma: "Aggiungi",
         });
