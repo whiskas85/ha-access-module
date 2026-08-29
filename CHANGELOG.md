@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-08-29
+
 ### Modificato
 
 - **Il pulsante che aggiunge sta in alto a destra del titolo**, su tutte le
