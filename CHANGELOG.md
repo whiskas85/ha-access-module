@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-08-29
+
 ### Modificato
 
 - **Persone e gruppi sono due linguette della stessa scheda**, come le tessere
