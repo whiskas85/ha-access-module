@@ -1267,19 +1267,39 @@ class AccessControlPanel extends HTMLElement {
         <div class="gruppi-elenco">${schedeGruppi}</div>
         <p class="nota">Togliendo un gruppo, chi ci stava resta <b>senza
           gruppo</b> e non apre più niente finché non gliene dai un altro.</p>
-      </section>`;
+      </section>
+
+      <details class="card blocco-spiega">
+        <summary>Come i gruppi decidono chi entra</summary>
+        <p class="nota">Il gruppo non è un'etichetta: è quello che le finestre
+          orarie leggono per decidere. Una finestra dice <b>quali gruppi</b>
+          ammette e quando, quindi una persona senza gruppo non rientra in
+          nessuna finestra — e le sue tessere non aprono, per quante ne
+          abbia.</p>
+        <p class="nota"><b>Bambino</b> e <b>adulto</b> non si tolgono: il
+          motore li cita per nome, «un adulto in avvicinamento ammette gli
+          adulti» è una regola scritta su quel gruppo. Togliendo uno degli
+          altri, le finestre che lo ammettevano lo perdono dall'elenco — e una
+          finestra rimasta senza gruppi non ammette più nessuno.</p>
+      </details>`;
     }
 
     return `
       ${linguette}
 
       <section class="card">
-        <h2>Chi può entrare, e con che permessi</h2>
-        <p class="nota">Il gruppo non è un'etichetta: è quello che le finestre
-          orarie leggono per decidere. Una finestra dice <b>quali gruppi</b>
-          ammette e quando, quindi una persona senza gruppo non rientra in
-          nessuna finestra — e le sue tessere non aprono, per quante ne abbia.</p>
+        <h2>Persone di Home Assistant</h2>
+        <p class="nota">Arrivano dalle <code>person.*</code> dell'impianto e si
+          aggiungono da lì. Sono le uniche che hanno la <b>presenza</b>.</p>
+        ${
+          schedeHA
+            ? ""
+            : `<p class="nota">Nessuna <code>person.*</code> in questo
+                 impianto.</p>`
+        }
       </section>
+
+      ${schedeHA}
 
       <section class="card">
         <div class="intestazione-card">
@@ -1296,21 +1316,7 @@ class AccessControlPanel extends HTMLElement {
         }
       </section>
 
-      ${schedeLocali}
-
-      <section class="card">
-        <h2>Persone di Home Assistant</h2>
-        <p class="nota">Arrivano dalle <code>person.*</code> dell'impianto e si
-          aggiungono da lì. Sono le uniche che hanno la <b>presenza</b>.</p>
-        ${
-          schedeHA
-            ? ""
-            : `<p class="nota">Nessuna <code>person.*</code> in questo
-                 impianto.</p>`
-        }
-      </section>
-
-      ${schedeHA}`;
+      ${schedeLocali}`;
   }
 
   _gruppoPersona(p, tessere, persone) {

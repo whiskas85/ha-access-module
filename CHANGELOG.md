@@ -8,6 +8,16 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **Nella scheda Persone vengono prima quelle di Home Assistant**, che sono la
+  famiglia: sono quelle che si guardano piu' spesso. Quelle create qui —
+  pulizie, ospiti, nonna — stanno sotto
+- **La spiegazione «chi puo' entrare» e' passata nei Gruppi, richiudibile.**
+  Occupava la testa della scheda Persone a ogni apertura per dire una cosa che
+  serve una volta, ed e' una cosa che riguarda i gruppi: e' li' che ha senso
+  cercarla. Insieme e' finita li' anche la nota sui due gruppi predefiniti
+
 ## [0.25.1] - 2026-08-29
 
 ### Modificato
