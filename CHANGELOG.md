@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.26.2] - 2026-08-30
+
 ### Modificato
 
 - **La finestra si abilita con un interruttore in alto a destra**, senza
