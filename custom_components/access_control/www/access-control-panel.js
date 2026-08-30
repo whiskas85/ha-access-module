@@ -1970,13 +1970,14 @@ class AccessControlPanel extends HTMLElement {
                     ? `<span class="pill s-attiva">attiva adesso</span>`
                     : `<span class="pill s-disabilitata">non attiva</span>`
                 }
-                ${
-                  w.enabled
-                    ? ""
-                    : `<span class="pill s-blacklist">disabilitata</span>`
-                }
               </span>
             </div>
+            ${interruttore(
+              'data-w="enabled"',
+              w.enabled,
+              "",
+              `Abilita la finestra ${w.name || ""}`,
+            )}
             <button class="mini danger" data-togli-finestra="${esc(w.id)}">
               ${icona("delete")}<span>Elimina</span></button>
           </div>
@@ -1984,7 +1985,6 @@ class AccessControlPanel extends HTMLElement {
           <div class="riga">
             <label>Dalle <input type="time" data-w="start" value="${esc(w.start)}" /></label>
             <label>Alle <input type="time" data-w="end" value="${esc(w.end)}" /></label>
-            ${spunta('data-w="enabled"', w.enabled, "Abilitata")}
           </div>
 
           <div>

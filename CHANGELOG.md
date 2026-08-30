@@ -8,6 +8,17 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Modificato
+
+- **La finestra si abilita con un interruttore in alto a destra**, senza
+  etichetta, come le notifiche. Era una casella in mezzo agli orari, con
+  scritto accanto «Abilitata»
+- Via anche la pastiglia «disabilitata» accanto al nome: diceva esattamente
+  quello che adesso dice l'interruttore, e due modi di dire la stessa cosa nel
+  giro di due centimetri sono uno di troppo. Resta «attiva adesso / non
+  attiva», che e' un'altra informazione — se la finestra sia in vigore in
+  questo momento, non se sia accesa
+
 ## [0.26.1] - 2026-08-30
 
 ### Aggiunto
