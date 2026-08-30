@@ -8,6 +8,24 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`SPEC.md` §15: il progetto del componente NTAG424 DNA**, verifica del
+  cryptogram e programmazione delle tessere
+  - Chiave **master in Home Assistant**, e una chiave **diversificata per
+    tessera** derivata da master e UID. E' cio' che rende accettabile il resto:
+    fuori da Home Assistant puo' passare la chiave di *una* tessera, mai la
+    master
+  - Le tessere si programmano **dal lettore**, con una finestra come quella del
+    censimento: si apre dal pannello, dura pochi secondi, la chiave vive in RAM
+    e viene cancellata alla chiusura. Mai in flash, mai oltre un riavvio
+  - Scritto anche **perche' non viola §2**: quella regola nasce contro la
+    chiave *residente*, quella che si trova smontando la scatola in un momento
+    qualsiasi. Qui esiste solo dentro una finestra aperta da dentro casa
+  - La verifica resta in Home Assistant: un nodo che verificasse da solo
+    sarebbe un nodo che decide. E il contatore letture va confrontato con
+    l'ultimo visto, perche' un valore che non avanza e' un replay
+
 ## [0.26.0] - 2026-08-30
 
 ### Aggiunto

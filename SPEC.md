@@ -391,7 +391,8 @@ rete, HA o alimentazione del lettore.
 
 Da progettare in seguito, ma tenerne conto nella struttura:
 
-- Custom component ESPHome per NTAG424 DNA (verifica cryptogram AES lato HA)
+- Custom component ESPHome per NTAG424 DNA — verifica del cryptogram e
+  programmazione delle tessere. Progetto in §15
 - Custom component per `UpChar`/`DownChar` su R503 — export/import dei template
   biometrici, per enrollment unico riutilizzabile su più varchi
 - Storage cifrato dei template in `/share/fingerprints/`, escluso dai backup
@@ -447,6 +448,73 @@ Il censimento è ammesso **solo da un lettore registrato**: una lettura da un
 dispositivo che non fa parte dell'impianto non deve poter aggiungere
 credenziali.
 
+
+## 15. NTAG424 DNA — verifica e programmazione
+
+È l'unica strada per cui una tessera può risultare `forte`: oggi il PN532 via
+ESPHome fornisce solo l'UID, che è un numero pubblico, e per questo nessuna
+tessera lo è.
+
+L'NTAG424 produce a ogni lettura, con la funzione SDM, un messaggio firmato in
+AES-128 che include un contatore. Un clone dell'UID non sa produrre quel
+messaggio, quindi la verifica del cryptogram è ciò che rende la credenziale
+qualcosa di più di un numero letto.
+
+### Le chiavi: una master dentro, una diversa per ogni tessera
+
+**La master sta in Home Assistant e non esce mai.** Ogni tessera riceve una
+chiave **derivata** da master e UID, con la diversificazione standard NXP.
+
+Non è un dettaglio implementativo: è ciò che rende accettabile tutto il resto.
+Quello che in un qualunque momento può trovarsi fuori da Home Assistant è la
+chiave di *una* tessera — mai la master. Chi la intercettasse potrebbe clonare
+quella tessera, che si mette in blacklist come qualunque tessera persa; non
+potrebbe fabbricarne altre né leggere le esistenti.
+
+### Programmazione: una finestra, come il censimento
+
+Le tessere si programmano **dal lettore**, non da un attrezzo a parte:
+
+1. Dal pannello: «programma questa tessera».
+2. Home Assistant deriva la chiave della tessera e apre una finestra sul nodo,
+   passandogliela.
+3. Il nodo entra in modalità scrittura per la durata della finestra, e alla
+   prima tessera appoggiata scrive chiave e configurazione SDM.
+4. La finestra si chiude — alla prima tessera scritta o allo scadere — e la
+   chiave **viene cancellata dalla RAM**. Il nodo torna in sola lettura.
+
+**La chiave non viene mai salvata sul nodo**: né in flash, né in NVS, né in una
+`global` che sopravviva a un riavvio. Vive in RAM per la durata della finestra
+e basta.
+
+> **Perché questo non viola §2.** La regola dice che le chiavi stanno in Home
+> Assistant e non nell'ESP32, e nasce contro la chiave *residente* — quella che
+> un attaccante trova smontando la scatola, in qualunque momento, senza che
+> nessuno stia facendo niente. Qui la chiave esiste sul nodo solo dentro una
+> finestra aperta da dentro casa, per pochi secondi, ed è quella di una singola
+> tessera. Chi sostituisse il firmware per trattenerla dovrebbe averlo fatto
+> *prima* e aspettare che qualcuno programmi una tessera, per ottenere il
+> clone di quella e nient'altro. Il tamper segnala l'apertura della scatola, e
+> la master resta dov'era.
+
+L'alternativa — programmare le tessere con il telefono o con un lettore USB —
+resta possibile e non richiede niente di tutto questo. Ma costringe a un
+secondo attrezzo e a un secondo procedimento per una cosa che il lettore sa già
+fare: il PN532 supporta lo scambio di comandi con la tessera, è il componente
+ESPHome che oggi non lo espone.
+
+### Verifica: dove si decide
+
+La verifica del cryptogram avviene **in Home Assistant**, non sul nodo. Il nodo
+legge e riferisce, come fa oggi con l'UID: un nodo che verificasse da solo
+sarebbe un nodo che decide, e §2 dice il contrario.
+
+Solo a verifica riuscita la tessera vale `forte`; una lettura senza cryptogram
+valido resta al livello dell'UID, cioè `debole`. Il contatore letture dentro il
+messaggio va confrontato con l'ultimo visto: un valore uguale o più basso è un
+replay, e va trattato come un diniego — non come un errore.
+
+---
 
 # Addendum — stato di implementazione
 
