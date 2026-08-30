@@ -218,6 +218,33 @@ qui.
 | Tessera rifiutata | ogni diniego, qualunque sia il motivo |
 | Allarme | quando l'allarme si alza — **una volta sola**, non a ogni lettura successiva |
 
+Ogni editor si può usare a riquadri o **in YAML**: una sequenza lunga si legge
+tutta insieme, e una che funziona già altrove si incolla invece di ricostruirla
+a mano. I due modi guardano lo stesso valore, quindi si passa dall'uno
+all'altro senza perdere niente.
+
+### Le notifiche
+
+Ogni tipo di notifica ha due modi, scegliibili dalla sua linguetta.
+
+**Predefinita** — titolo e messaggio, mandati dal modulo al destinatario
+configurato, con priorità alta e foto se richieste.
+
+**Personalizzata** — il modulo non manda niente per conto suo ed esegue una
+sequenza di azioni, lo stesso editor dei lettori. Serve a chi vuole una
+notifica fatta a modo proprio, o qualcosa che notifica non è: accendere una
+luce, far parlare un altoparlante, chiamare un webhook. I dati della lettura
+arrivano nella variabile `notifica`:
+
+```yaml
+- action: notify.mobile_app_telefono
+  data:
+    message: "{{ notifica.titolare }} è entrato alle {{ notifica.ora }}"
+```
+
+I due modi convivono nella stessa configurazione: passando a personalizzata non
+si perde il testo scritto, e tornando indietro lo si ritrova.
+
 La conseguenza è che `choose`, `if`, `delay`, `repeat` e i template funzionano
 perché non sono riscritti: sono quelli veri, eseguiti dall'helper `Script`. E
 quello che vedi nell'editor è letteralmente quello che viene eseguito, senza

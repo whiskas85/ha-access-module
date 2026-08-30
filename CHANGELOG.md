@@ -8,6 +8,28 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Ogni notifica ha due linguette: predefinita e personalizzata.** In
+  personalizzata il modulo non manda niente per conto suo ed esegue una
+  sequenza di azioni, lo stesso editor dei lettori
+  - Serve a chi vuole una notifica fatta a modo proprio, o qualcosa che
+    notifica non e': accendere una luce, far parlare un altoparlante, chiamare
+    un webhook. I dati della lettura arrivano nella variabile `notifica`
+  - Scegliere la linguetta e' gia' dire quale dei due modi si vuole: non c'e'
+    un interruttore in piu' da ricordarsi
+  - I due modi convivono nella stessa configurazione invece di sostituirsi.
+    Passando a personalizzata non si perde il testo scritto, e tornando
+    indietro lo si ritrova: un modo che cancella l'altro costringe a ricopiare
+    tutto per provare una strada e poi ripensarci
+  - In personalizzata non serve un destinatario: pretenderlo escluderebbe
+    proprio le sequenze che non notificano
+- **Tutti gli editor di azioni si possono scrivere in YAML**, quelli dei
+  lettori e quello delle notifiche. Una sequenza lunga si legge tutta insieme,
+  e una che funziona gia' altrove si incolla invece di ricostruirla a riquadri.
+  I due modi guardano lo stesso valore, quindi si passa dall'uno all'altro
+  senza perdere niente
+
 ## [0.25.2] - 2026-08-30
 
 ### Modificato

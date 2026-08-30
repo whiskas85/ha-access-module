@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, NOTIFY_DESTINAZIONE, PANEL_URL
@@ -46,6 +46,46 @@ def _destinazione(tipo: str) -> dict[str, Any]:
         return {}
     percorso = f"/{PANEL_URL}/{sezione}" if sezione else f"/{PANEL_URL}"
     return {"clickAction": percorso, "url": percorso}
+
+
+async def _async_azioni_custom(
+    hass: HomeAssistant,
+    tipo: str,
+    tipo_conf: dict[str, Any],
+    valori: dict[str, Any],
+) -> bool:
+    """Esegue la sequenza scritta a mano al posto della notifica del modulo.
+
+    I segnaposto arrivano come variabile `notifica`, quindi dentro l'editor si
+    scrive `{{ notifica.tessera }}` come nelle azioni di un lettore si scrive
+    `{{ accesso.person }}`. Sono due nomi diversi perche' sono due cose
+    diverse: qui non c'e' una decisione di accesso, c'e' un avviso da dare.
+    """
+    sequenza = tipo_conf.get("azioni") or []
+    if not sequenza:
+        _LOGGER.warning(
+            "Notifica %s in modo personalizzato ma senza nessuna azione: "
+            "non e' partito niente",
+            tipo,
+        )
+        return False
+
+    from homeassistant.helpers.script import Script
+
+    script = Script(
+        hass,
+        sequenza,
+        f"Controllo Accessi — notifica {tipo}",
+        DOMAIN,
+        script_mode="parallel",
+        max_runs=5,
+    )
+    try:
+        await script.async_run({"notifica": valori}, context=Context())
+    except Exception:
+        _LOGGER.exception("Azioni della notifica %s fallite", tipo)
+        return False
+    return True
 
 
 def _modo_camera(store, camera: str) -> str:
@@ -110,14 +150,21 @@ async def async_notify(
     if not tipo_conf or not tipo_conf.get("attivo"):
         return False
 
+    valori = dict(valori or {})
+    valori.setdefault("ora", dt_util.now().strftime("%H:%M"))
+    valori.setdefault("stato", store.system_state)
+    valori.setdefault("telecamera", camera or store.settings.get("camera_entity") or "")
+
+    # Il modo personalizzato non passa da un servizio di notifica: la sequenza
+    # puo' non notificare affatto — accendere una luce, far parlare un
+    # altoparlante — e pretendere un destinatario la escluderebbe.
+    if tipo_conf.get("modo") == "custom":
+        return await _async_azioni_custom(hass, tipo, tipo_conf, valori)
+
     servizio = tipo_conf.get("service") or conf.get("service") or ""
     if "." not in servizio:
         _LOGGER.warning("Notifica %s senza servizio valido: %s", tipo, servizio)
         return False
-
-    valori = dict(valori or {})
-    valori.setdefault("ora", dt_util.now().strftime("%H:%M"))
-    valori.setdefault("stato", store.system_state)
 
     dati: dict[str, Any] = _destinazione(tipo)
     if tipo_conf.get("alta_priorita"):
@@ -183,13 +230,20 @@ async def async_notify_alarm_with_open(
     if not conf.get("master", True) or not tipo_conf.get("attivo"):
         return False
 
-    servizio = tipo_conf.get("service") or conf.get("service") or ""
-    if "." not in servizio:
-        return False
-
     valori = dict(valori)
     valori.setdefault("ora", dt_util.now().strftime("%H:%M"))
     valori.setdefault("stato", store.system_state)
+    valori.setdefault("telecamera", camera or store.settings.get("camera_entity") or "")
+
+    if tipo_conf.get("modo") == "custom":
+        # Niente pulsanti «apri comunque»: quelli li mette la notifica del
+        # modulo. Chi scrive la propria sequenza decide anche questo, e
+        # aggiungerglieli sotto sarebbe metterle in bocca parole sue.
+        return await _async_azioni_custom(hass, "allarme", tipo_conf, valori)
+
+    servizio = tipo_conf.get("service") or conf.get("service") or ""
+    if "." not in servizio:
+        return False
 
     dati: dict[str, Any] = {**_destinazione("allarme"), "ttl": 0, "priority": "high"}
     camera = camera or store.settings.get("camera_entity")

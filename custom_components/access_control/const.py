@@ -530,6 +530,20 @@ DEFAULT_NOTIFICATIONS: Final[dict] = {
     },
 }
 
+# Ogni tipo ha due modi. In «default» il modulo manda la notifica da se', con
+# il titolo e il messaggio qui sopra. In «custom» esegue una sequenza di azioni
+# scritta nell'editor, e non manda niente per conto suo: serve a chi vuole una
+# notifica fatta a modo proprio, o qualcosa che notifica non e' — accendere una
+# luce, far parlare un altoparlante, chiamare un webhook.
+#
+# I due modi convivono nella stessa configurazione invece di sostituirsi:
+# passando a custom non si perde il testo scritto, e tornando indietro lo si
+# ritrova. Un modo che cancella l'altro costringe a ricopiare tutto per provare
+# una strada e poi ripensarci.
+for _tipo in DEFAULT_NOTIFICATIONS["tipi"].values():
+    _tipo.setdefault("modo", "default")
+    _tipo.setdefault("azioni", [])
+
 CONF_DEVICES: Final = "devices"
 CONF_PEOPLE: Final = "persone"
 CONF_WINDOWS: Final = "windows"

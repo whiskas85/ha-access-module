@@ -589,11 +589,29 @@ class AccessControlPanel extends HTMLElement {
       box.addEventListener("change", segna);
     });
 
+    this.shadowRoot.querySelectorAll("[data-yaml]").forEach((el) =>
+      el.addEventListener("click", () => {
+        this._yaml = this._yaml || new Set();
+        const chiave = el.dataset.yaml;
+        if (this._yaml.has(chiave)) this._yaml.delete(chiave);
+        else this._yaml.add(chiave);
+        this._render();
+      }),
+    );
+
     this.shadowRoot.querySelectorAll("[data-sottotab]").forEach((el) =>
       el.addEventListener("click", () => {
         const [pagina, id] = el.dataset.sottotab.split("|");
         this._sotto = { ...(this._sotto || {}), [pagina]: id };
-        this._modificato = false;
+        if (pagina.startsWith("notifica:")) {
+          // Qui la linguetta non e' solo una vista: scegliere «custom» vuol
+          // dire volerla usare, ed e' una modifica che va salvata. Percio'
+          // compare il pulsante Salva, e la pagina smette di rinfrescarsi.
+          this._notificheSporche = this._notificheSporche || new Set();
+          this._notificheSporche.add(pagina.slice("notifica:".length));
+        } else {
+          this._modificato = false;
+        }
         this._render();
       }),
     );
@@ -890,6 +908,18 @@ class AccessControlPanel extends HTMLElement {
       campo.focus();
       campo.select();
     });
+  }
+
+  _editorAzioni(sorgente, id, campo) {
+    const chiave = `${sorgente}|${id}|${campo}`;
+    const yaml = this._yaml?.has(chiave);
+    return `
+      <div class="riga fine">
+        <button class="mini ${yaml ? "ok" : ""}" data-yaml="${esc(chiave)}">
+          ${yaml ? "Torna all'editor" : "Scrivi in YAML"}</button>
+      </div>
+      <div class="editor-azioni" data-editor-azioni="${esc(id)}"
+           data-campo="${esc(campo)}" data-sorgente="${esc(sorgente)}"></div>`;
   }
 
   // ── linguette dentro una pagina ──────────────────────────────────────
@@ -1657,8 +1687,7 @@ class AccessControlPanel extends HTMLElement {
             : `<p class="nota">${icona("alert")} Nessun varco definito: creane
                  uno nella scheda <b>Varchi</b> per poterlo aprire da qui.</p>`
         }
-        <div class="editor-azioni" data-editor-azioni="${esc(id)}"
-             data-campo="azioni"></div>
+        ${this._editorAzioni("dispositivo", id, "azioni")}
 
         <h2>Cosa fa quando una tessera è rifiutata</h2>
         <p class="nota">Vale per <b>ogni</b> diniego, qualunque ne sia il
@@ -1666,8 +1695,7 @@ class AccessControlPanel extends HTMLElement {
           vero ce l'hai in <code>{{ accesso.motivo }}</code>, ma al lettore non
           arriva: da fuori un rifiuto è indistinguibile dall'altro, ed è
           voluto. Lasciala vuota se un diniego deve solo essere tracciato.</p>
-        <div class="editor-azioni" data-editor-azioni="${esc(id)}"
-             data-campo="azioni_ko"></div>
+        ${this._editorAzioni("dispositivo", id, "azioni_ko")}
 
         <h2>Cosa fa quando scatta l'allarme</h2>
         <p class="nota">Parte quando i dinieghi di fila superano la soglia, o
@@ -1675,8 +1703,7 @@ class AccessControlPanel extends HTMLElement {
           sola</b>, nel momento in cui l'allarme si alza. Non a ogni lettura
           successiva: a impianto già bloccato sarebbe una sirena che riparte a
           ogni tessera passata.</p>
-        <div class="editor-azioni" data-editor-azioni="${esc(id)}"
-             data-campo="azioni_allarme"></div>
+        ${this._editorAzioni("dispositivo", id, "azioni_allarme")}
 
         <h2>Risposta al lettore</h2>
         <p class="nota">Va data sempre, anche negando: se il modulo tace, il
@@ -1718,6 +1745,19 @@ class AccessControlPanel extends HTMLElement {
 
   // ── editor azioni ────────────────────────────────────────────────────
 
+  // Da dove viene la sequenza salvata: un lettore o una notifica. Sono due
+  // posti diversi dello stato, ma per l'editor sono la stessa cosa — una
+  // lista di azioni — e tenerne due copie divergerebbe.
+  _azioniSalvate(sorgente, id, campo) {
+    if (sorgente === "notifica") {
+      return (this._data?.notifiche?.tipi || {})[id]?.[campo] || [];
+    }
+    return (
+      (this._data?.dispositivi || []).find((x) => x.device_id === id)?.[campo] ||
+      []
+    );
+  }
+
   async _montaEditorAzioni() {
     const contenitori = this.shadowRoot.querySelectorAll("[data-editor-azioni]");
     if (!contenitori.length) return;
@@ -1727,23 +1767,56 @@ class AccessControlPanel extends HTMLElement {
 
     this._selettori = [];
     contenitori.forEach((box) => {
-      const deviceId = box.dataset.editorAzioni;
-      // Un lettore ha tre sequenze — consentito, negato, allarme — e ognuna
-      // ha il suo editor: la chiave le tiene distinte, altrimenti si
+      const id = box.dataset.editorAzioni;
+      // Ogni sequenza ha il suo editor — le tre di un lettore, quella di una
+      // notifica — e la chiave le tiene distinte: senza, si
       // sovrascriverebbero a vicenda.
       const campo = box.dataset.campo || "azioni";
-      const chiave = `${deviceId}|${campo}`;
-      const device = (this._data?.dispositivi || []).find(
-        (x) => x.device_id === deviceId,
-      );
+      const sorgente = box.dataset.sorgente || "dispositivo";
+      const chiave = `${sorgente}|${id}|${campo}`;
       // Quello che si sta modificando ha la precedenza su quello salvato:
       // un rimontaggio a meta' modifica riporterebbe l'editor indietro.
       const azioni =
-        this._azioniInModifica?.[chiave] ?? (device?.[campo] || []);
+        this._azioniInModifica?.[chiave] ??
+        this._azioniSalvate(sorgente, id, campo);
       box.innerHTML = "";
 
+      const ricorda = (valore) => {
+        this._azioniInModifica = this._azioniInModifica || {};
+        this._azioniInModifica[chiave] = valore;
+        this._modificato = true;
+      };
+
+      // ── modo YAML ────────────────────────────────────────────────────
+      //
+      // Non e' un ripiego ma una scelta: una sequenza lunga si legge tutta
+      // insieme, si copia da un'automazione che gia' funziona e si incolla,
+      // cose che l'editor a riquadri rende faticose. I due modi guardano lo
+      // stesso valore, quindi si passa dall'uno all'altro senza perdere
+      // niente.
+      if (this._yaml?.has(chiave) && customElements.get("ha-yaml-editor")) {
+        const ed = document.createElement("ha-yaml-editor");
+        ed.hass = this._hass;
+        ed.defaultValue = azioni;
+        ed.addEventListener("value-changed", (ev) => {
+          ev.stopPropagation();
+          // `isValid` falso significa YAML scritto a meta'. Il valore non si
+          // prende — sarebbe salvare qualcosa che non si puo' rileggere — ma
+          // la pagina va comunque segnata come «in modifica»: altrimenti un
+          // aggiornamento arrivato mentre si scrive rimonterebbe l'editor e
+          // porterebbe via il testo a meta'.
+          if (ev.detail.isValid === false) {
+            this._modificato = true;
+            return;
+          }
+          ricorda(ev.detail.value);
+        });
+        box.appendChild(ed);
+        return;
+      }
+
       if (!disponibili) {
-        // Ripiego: si modifica il JSON a mano. Brutto, ma è pur sempre
+        // Ripiego vero: si modifica il JSON a mano. Brutto, ma è pur sempre
         // modificabile — meglio di un riquadro vuoto senza spiegazione.
         const nota = document.createElement("p");
         nota.className = "nota";
@@ -1767,8 +1840,7 @@ class AccessControlPanel extends HTMLElement {
       sel.value = azioni;
       sel.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
-        this._azioniInModifica = this._azioniInModifica || {};
-        this._azioniInModifica[chiave] = ev.detail.value;
+        ricorda(ev.detail.value);
         // `ha-selector` e' controllato: disegna quello che ha in `value` e
         // si aspetta che sia chi lo ospita a ridarglielo aggiornato. Senza
         // questa riga l'azione appena aggiunta finisce nello stato del
@@ -1781,8 +1853,8 @@ class AccessControlPanel extends HTMLElement {
     });
   }
 
-  _azioniCorrenti(deviceId, campo = "azioni") {
-    const chiave = `${deviceId}|${campo}`;
+  _azioniCorrenti(id, campo = "azioni", sorgente = "dispositivo") {
+    const chiave = `${sorgente}|${id}|${campo}`;
     if (this._azioniInModifica && chiave in this._azioniInModifica) {
       return this._azioniInModifica[chiave];
     }
@@ -1796,10 +1868,7 @@ class AccessControlPanel extends HTMLElement {
         throw new Error("Il JSON delle azioni non è valido");
       }
     }
-    const device = (this._data?.dispositivi || []).find(
-      (x) => x.device_id === deviceId,
-    );
-    return device?.[campo] || [];
+    return this._azioniSalvate(sorgente, id, campo);
   }
 
   // ── varchi ───────────────────────────────────────────────────────────
@@ -2040,6 +2109,11 @@ class AccessControlPanel extends HTMLElement {
     const blocchi = Object.entries(tipi)
       .map(([chiave, etichetta]) => {
         const t = (n.tipi || {})[chiave] || {};
+        const modo = this._sottoAttivo(
+          `notifica:${chiave}`,
+          t.modo === "custom" ? "custom" : "default",
+          ["default", "custom"],
+        );
         return `
         <div class="varco" data-notifica="${esc(chiave)}">
           <div class="titolare">
@@ -2055,7 +2129,27 @@ class AccessControlPanel extends HTMLElement {
               `Attiva la notifica ${etichetta}`,
             )}
           </div>
-          <div class="riga">
+          ${this._linguette(
+            `notifica:${chiave}`,
+            [
+              { id: "default", testo: "Predefinita" },
+              { id: "custom", testo: "Personalizzata" },
+            ],
+            modo,
+          )}
+          ${
+            modo === "custom"
+              ? `<p class="nota">Il modulo non manda niente per conto suo:
+                   esegue queste azioni. I dati della lettura sono in
+                   <code>{{ notifica.tessera }}</code>,
+                   <code>{{ notifica.titolare }}</code>,
+                   <code>{{ notifica.lettore }}</code>,
+                   <code>{{ notifica.motivo }}</code>,
+                   <code>{{ notifica.ora }}</code>,
+                   <code>{{ notifica.stato }}</code>,
+                   <code>{{ notifica.telecamera }}</code>.</p>
+                 ${this._editorAzioni("notifica", chiave, "azioni")}`
+              : `<div class="riga">
             <label>Destinatario
               ${selettore('data-n="service"', t.service || "", "— usa quello generale —")}
             </label>
@@ -2076,7 +2170,8 @@ class AccessControlPanel extends HTMLElement {
             <input data-n="titolo" value="${esc(t.titolo || "")}" /></label>
           <label>Messaggio
             <textarea data-n="messaggio" rows="2"
-              placeholder="Testo della notifica">${esc(t.messaggio || "")}</textarea></label>
+              placeholder="Testo della notifica">${esc(t.messaggio || "")}</textarea></label>`
+          }
           <button data-salva-notifica="${esc(chiave)}"
             ${this._notificheSporche?.has(chiave) ? "" : "hidden"}>${icona(
               "check",
@@ -2401,6 +2496,24 @@ class AccessControlPanel extends HTMLElement {
         box.querySelectorAll("[data-n]").forEach((f) => {
           conf[f.dataset.n] = eSpunta(f) ? f.checked : f.value;
         });
+
+        // Il modo e' quello della linguetta aperta: sceglierla e' gia' dire
+        // quale delle due si vuole usare.
+        conf.modo = this._sottoAttivo(
+          `notifica:${chiave}`,
+          (this._data?.notifiche?.tipi || {})[chiave]?.modo === "custom"
+            ? "custom"
+            : "default",
+          ["default", "custom"],
+        );
+        try {
+          conf.azioni = this._azioniCorrenti(chiave, "azioni", "notifica");
+        } catch (err) {
+          this._errore = err.message;
+          this._render();
+          return;
+        }
+
         this._notificheSporche?.delete(chiave);
         this._comando({
           action: "set_notifications",
@@ -2441,7 +2554,7 @@ class AccessControlPanel extends HTMLElement {
           return;
         }
         this._azioniInModifica = this._azioniInModifica || {};
-        this._azioniInModifica[`${deviceId}|azioni`] = [
+        this._azioniInModifica[`dispositivo|${deviceId}|azioni`] = [
           ...(correnti || []),
           { action: "access_control.open_gate", data: { gate: gateId } },
         ];
@@ -2450,7 +2563,7 @@ class AccessControlPanel extends HTMLElement {
         this._comando({
           action: "set_device",
           device_id: deviceId,
-          changes: { azioni: this._azioniInModifica[`${deviceId}|azioni`] },
+          changes: { azioni: this._azioniInModifica[`dispositivo|${deviceId}|azioni`] },
         });
       }),
     );
@@ -2915,6 +3028,7 @@ class AccessControlPanel extends HTMLElement {
       .kv { display:flex; flex-direction:column; gap:3px; }
       .kv span { font-size:.8rem; color:var(--secondary-text-color); text-transform:uppercase; letter-spacing:.5px; }
       .kv b { font-size:1.05rem; }
+      .riga.fine { justify-content:flex-end; }
       .riga { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
       label { display:flex; flex-direction:column; gap:5px; font-size:.9rem;
               color:var(--secondary-text-color); flex:1 1 190px; }
