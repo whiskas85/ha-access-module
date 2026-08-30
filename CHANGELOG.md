@@ -8,6 +8,18 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Il pannello poteva smettere di aggiornarsi per sempre**, e le letture non
+  comparivano piu' fra le ultime
+  - Le due guardie che fermano il ridisegno — configurazione di un lettore
+    aperta, notifica con modifiche non salvate — valevano su tutte le schede.
+    Bastava aprire la configurazione di un lettore, o toccare la linguetta di
+    una notifica, e poi cambiare scheda: quel segnale restava acceso e da quel
+    momento nemmeno lo Stato si aggiornava piu'
+  - Adesso ognuna vale solo sulla scheda che la riguarda, e cambiare scheda le
+    spegne — cambiare scheda abbandona gia' quello che non era salvato
+
 ## [0.26.2] - 2026-08-30
 
 ### Modificato

@@ -425,11 +425,17 @@ class AccessControlPanel extends HTMLElement {
     // sta scrivendo in un campo: finché una delle due cose è in corso, la
     // pagina aspetta.
     if (this._dragging) return false;
-    // Con l'editor delle azioni aperto non si ridisegna: un ridisegno
-    // ricostruirebbe il componente e perderebbe la sequenza in modifica.
-    if (this._configDisp) return false;
-    // Una notifica con modifiche non salvate: vale lo stesso motivo.
-    if (this._notificheSporche?.size) return false;
+
+    // Le due guardie che seguono valgono SOLO sulla scheda che le riguarda.
+    //
+    // Prima non era così, ed era un difetto serio: aprire la configurazione di
+    // un lettore, o toccare una linguetta di una notifica, e poi cambiare
+    // scheda lasciava quel segnale acceso per sempre. Da quel momento tutta la
+    // pagina smetteva di aggiornarsi — anche lo Stato, dove non c'è niente da
+    // perdere — e le letture non comparivano più. Il ridisegno va fermato dove
+    // c'è del lavoro non salvato, non ovunque per sempre.
+    if (this._tab === "dispositivi" && this._configDisp) return false;
+    if (this._tab === "notifiche" && this._notificheSporche?.size) return false;
     // E qualunque altra modifica non salvata. Una spunta messa e non ancora
     // salvata vive solo nella pagina: un ridisegno la riporterebbe al valore
     // di prima, e chi guarda vedrebbe la propria scelta annullarsi da sola.
@@ -619,7 +625,10 @@ class AccessControlPanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-tab]").forEach((el) =>
       el.addEventListener("click", () => {
         this._tab = el.dataset.tab;
+        // Cambiare scheda abbandona quello che non era salvato: e' una scelta
+        // esplicita, e i segnali che lo custodivano vanno spenti con lei.
         this._modificato = false;
+        this._notificheSporche?.clear();
         this._render();
         // `block: nearest` e non il centro: senza, portare in vista una
         // scheda fuori schermo trascinerebbe anche la pagina in verticale.
