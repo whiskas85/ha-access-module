@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-08-30
+
 ### Modificato
 
 - **Nella scheda Persone vengono prima quelle di Home Assistant**, che sono la
