@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-08-30
+
 ### Aggiunto
 
 - **`SPEC.md` §15: il progetto del componente NTAG424 DNA**, verifica del
