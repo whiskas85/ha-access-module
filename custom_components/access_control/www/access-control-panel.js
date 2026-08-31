@@ -2131,6 +2131,9 @@ class AccessControlPanel extends HTMLElement {
               <b>${esc(etichetta)}</b>
               <span class="sotto"><code>${esc(chiave)}</code></span>
             </div>
+            <button class="mini" data-prova-notifica="${esc(chiave)}"
+              title="Manda una notifica di prova. Usa la configurazione salvata, non quella a schermo.">
+              ${icona("campana")}<span>Prova</span></button>
             ${interruttore(
               'data-n="attivo"',
               t.attivo,
@@ -2479,6 +2482,15 @@ class AccessControlPanel extends HTMLElement {
             service: r.getElementById("notif-service")?.value || "",
           },
         }),
+    );
+
+    r.querySelectorAll("[data-prova-notifica]").forEach((el) =>
+      el.addEventListener("click", () =>
+        this._comando({
+          action: "test_notification",
+          tipo: el.dataset.provaNotifica,
+        }),
+      ),
     );
 
     r.querySelectorAll("[data-salva-notifica]").forEach((el) =>

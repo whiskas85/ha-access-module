@@ -20,6 +20,7 @@ from .const import (
     DEVICE_LEARNING_TIMEOUT_S,
     DOMAIN,
     ENROLLMENT_TIMEOUT_S,
+    NOTIFY_ALARM,
     NOTIFY_LABELS,
     PANEL_ICON,
     PANEL_TITLE,
@@ -29,6 +30,7 @@ from .const import (
     TECHNOLOGY_SECURITY,
 )
 from .foto import AccessPhotoView, async_scatta
+from .notifier import async_notify, async_notify_alarm_with_open
 from .nomi import nome_dispositivo, nome_persona
 
 _LOGGER = logging.getLogger(__name__)
@@ -186,6 +188,70 @@ def _registro(hass: HomeAssistant, store) -> list[dict[str, Any]]:
         riga["varco_nome"] = nome_dispositivo(hass, store, riga.get("varco") or "")
         righe.append(riga)
     return righe
+
+
+async def _prova_notifica(hass: HomeAssistant, store, tipo: str) -> list[str]:
+    """Manda una notifica con dati finti, per vedere se arriva davvero.
+
+    Una notifica si prova quando serve — e serve prima che succeda la cosa che
+    la fa scattare, non dopo. Aspettare un allarme vero per scoprire che il
+    destinatario era sbagliato significa scoprirlo nel momento peggiore.
+
+    **Non aggira il master ne' l'interruttore del singolo tipo.** Farla partire
+    da una notifica spenta direbbe «funziona» di una cosa che in esercizio non
+    parte mai: e' proprio la bugia che una prova deve escludere.
+    """
+    conf = store.notifications
+    tipo_conf = (conf.get("tipi") or {}).get(tipo)
+    if tipo_conf is None:
+        raise KeyError(tipo)
+
+    if not conf.get("master", True):
+        return [
+            "Il master delle notifiche e' spento: non parte niente, nemmeno "
+            "la prova."
+        ]
+    if not tipo_conf.get("attivo"):
+        return [
+            "Questa notifica e' spenta: accendila e salva, poi riprova. "
+            "Mandarla lo stesso direbbe «funziona» di una cosa che in "
+            "esercizio non parte."
+        ]
+
+    lettore = next(
+        (nome_dispositivo(hass, store, d) for d in store.devices),
+        "lettore di prova",
+    )
+    valori = {
+        "tessera": "Tessera di prova",
+        "titolare": "Prova dal pannello",
+        "lettore": lettore,
+        "motivo": "prova richiesta dal pannello",
+    }
+
+    if tipo == NOTIFY_ALARM:
+        # La prova dell'allarme porta anche i pulsanti, perche' sono la parte
+        # che si vuole davvero verificare: il giorno che serve, quei tasti
+        # devono aprire.
+        azioni = [
+            {
+                "action": f"ACCESS_OPEN_{gid.upper()}",
+                "title": f"Apri {g.get('name', gid)}",
+            }
+            for gid, g in list(store.gates.items())[:2]
+        ]
+        azioni.append({"action": "ACCESS_CLEAR_ALARM", "title": "Sblocca impianto"})
+        partita = await async_notify_alarm_with_open(hass, valori, azioni)
+    else:
+        partita = await async_notify(hass, tipo, valori)
+
+    if not partita:
+        return [
+            "La notifica non e' partita. Il motivo e' nel registro di Home "
+            "Assistant: di solito un destinatario mancante o un'azione "
+            "personalizzata vuota."
+        ]
+    return ["Notifica di prova inviata."]
 
 
 async def _prova_camera(hass: HomeAssistant, store, entity_id: str) -> list[str]:
@@ -489,6 +555,9 @@ class AccessCommandView(HomeAssistantView):
                 await store.async_assign_person(
                     body["card_id"], body.get("person", "")
                 )
+
+            elif action == "test_notification":
+                avvisi += await _prova_notifica(hass, store, body.get("tipo", ""))
 
             elif action == "add_group":
                 await store.async_add_group(body.get("nome", ""))

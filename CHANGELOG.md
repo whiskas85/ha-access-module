@@ -8,6 +8,21 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Pulsante «Prova» su ogni notifica**: la manda con dati finti, senza
+  aspettare che succeda la cosa che la farebbe scattare
+  - Una notifica si prova prima, non dopo. Scoprire da un allarme vero che il
+    destinatario era sbagliato significa scoprirlo nel momento peggiore
+  - La prova dell'allarme porta con se' anche i **pulsanti** «apri comunque» e
+    «sblocca»: sono la parte che si vuole davvero verificare, perche' il giorno
+    che servono devono aprire
+  - **Non aggira il master ne' l'interruttore del tipo.** Con la notifica
+    spenta non parte e lo dice: mandarla lo stesso direbbe «funziona» di una
+    cosa che in esercizio non parte mai, ed e' proprio la bugia che una prova
+    deve escludere
+  - Usa la configurazione **salvata**, non quella a schermo
+
 ## [0.26.4] - 2026-08-31
 
 ### Rimosso
