@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.26.4] - 2026-08-31
+
 ### Rimosso
 
 - **«Prova una lettura» dalle Impostazioni.** Chiedeva di scrivere a mano un
