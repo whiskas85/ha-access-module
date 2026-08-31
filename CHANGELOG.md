@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-08-31
+
 ### Aggiunto
 
 - **Pulsante «Prova» su ogni notifica**: la manda con dati finti, senza
