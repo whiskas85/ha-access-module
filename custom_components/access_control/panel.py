@@ -570,12 +570,6 @@ class AccessCommandView(HomeAssistantView):
             elif action == "clear_log":
                 await store.async_clear_log()
 
-            elif action == "scan":
-                # Prova la catena completa senza andare al varco.
-                await data["evaluator"].async_handle_scan(
-                    body.get("uid", ""), body.get("gate", "")
-                )
-
             else:
                 return self.json_message(f"Azione sconosciuta: {action}", 400)
 

@@ -8,6 +8,14 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Rimosso
+
+- **«Prova una lettura» dalle Impostazioni.** Chiedeva di scrivere a mano un
+  UID per simulare una lettura: chi ha la tessera in mano la passa al lettore
+  e ottiene la stessa cosa, con in piu' la prova che il lettore funzioni
+  - Il servizio `access_control.scan` resta, perche' da un'automazione ha
+    ancora senso; era il campo nel pannello a non averlo
+
 ## [0.26.3] - 2026-08-30
 
 ### Corretto

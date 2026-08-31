@@ -2327,22 +2327,6 @@ class AccessControlPanel extends HTMLElement {
       </section>
 
       <section class="card">
-        <h2>Prova una lettura</h2>
-        <p class="nota">Percorre tutta la catena — decisione, azioni del
-          lettore, registro — <b>senza andare al varco</b>. Serve a verificare
-          una configurazione senza doversi alzare e passare una tessera.</p>
-        <div class="riga">
-          <input id="prova-uid" placeholder="UID della tessera" />
-          <select id="prova-varco">
-            ${(d.dispositivi || [])
-              .map((l) => `<option value="${esc(l.device_id)}">${esc(l.nome)}</option>`)
-              .join("")}
-          </select>
-          <button data-act="scan">${icona("rfid")} Valuta</button>
-        </div>
-      </section>
-
-      <section class="card">
         <h2>Presenza e sensori</h2>
         <div class="riga">
           <label>Telecamera generale
@@ -2614,14 +2598,6 @@ class AccessControlPanel extends HTMLElement {
         this._comando({ action: "clear_log" });
       }
     });
-
-    r.querySelector('[data-act="scan"]')?.addEventListener("click", () =>
-      this._comando({
-        action: "scan",
-        uid: val("prova-uid"),
-        gate: val("prova-varco"),
-      }),
-    );
 
     // Un pulsante per varco: il censimento ascolta un lettore preciso, non
     // "tutti". Con due varchi, "abilita lettura" senza dire quale non sarebbe
