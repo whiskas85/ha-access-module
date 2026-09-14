@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-09-14
+
 ### Aggiunto
 
 - **`ntag424.py`: la crittografia dell'NTAG 424 DNA**, primo pezzo di §15.
