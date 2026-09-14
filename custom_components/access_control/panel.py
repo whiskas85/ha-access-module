@@ -19,7 +19,6 @@ from .const import (
     DEFAULT_WINDOW,
     DEVICE_LEARNING_TIMEOUT_S,
     DOMAIN,
-    ENROLLMENT_TIMEOUT_S,
     NOTIFY_ALARM,
     NOTIFY_LABELS,
     PANEL_ICON,
@@ -30,8 +29,8 @@ from .const import (
     TECHNOLOGY_SECURITY,
 )
 from .foto import AccessPhotoView, async_scatta
-from .notifier import async_notify, async_notify_alarm_with_open
 from .nomi import nome_dispositivo, nome_persona
+from .notifier import async_notify, async_notify_alarm_with_open
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -208,14 +207,18 @@ async def _prova_notifica(hass: HomeAssistant, store, tipo: str) -> list[str]:
 
     if not conf.get("master", True):
         return [
-            "Il master delle notifiche e' spento: non parte niente, nemmeno "
-            "la prova."
+            (
+                "Il master delle notifiche e' spento: non parte niente, nemmeno "
+                "la prova."
+            )
         ]
     if not tipo_conf.get("attivo"):
         return [
-            "Questa notifica e' spenta: accendila e salva, poi riprova. "
-            "Mandarla lo stesso direbbe «funziona» di una cosa che in "
-            "esercizio non parte."
+            (
+                "Questa notifica e' spenta: accendila e salva, poi riprova. "
+                "Mandarla lo stesso direbbe «funziona» di una cosa che in "
+                "esercizio non parte."
+            )
         ]
 
     lettore = next(
@@ -247,9 +250,11 @@ async def _prova_notifica(hass: HomeAssistant, store, tipo: str) -> list[str]:
 
     if not partita:
         return [
-            "La notifica non e' partita. Il motivo e' nel registro di Home "
-            "Assistant: di solito un destinatario mancante o un'azione "
-            "personalizzata vuota."
+            (
+                "La notifica non e' partita. Il motivo e' nel registro di Home "
+                "Assistant: di solito un destinatario mancante o un'azione "
+                "personalizzata vuota."
+            )
         ]
     return ["Notifica di prova inviata."]
 
@@ -284,7 +289,7 @@ async def _prova_camera(hass: HomeAssistant, store, entity_id: str) -> list[str]
     try:
         await camera_ha.async_get_image(hass, entity_id, timeout=10)
         modo = "scatto"
-    except Exception as err:  # noqa: BLE001 — qualunque guasto vale lo stesso
+    except Exception as err:
         dettaglio = str(err)
         if await async_scatta(hass, entity_id):
             modo = "diretta"
@@ -297,16 +302,20 @@ async def _prova_camera(hass: HomeAssistant, store, entity_id: str) -> list[str]
         return []
     if modo == "diretta":
         return [
-            f"«{nome}» non sa produrre un'istantanea, ma la diretta si apre: "
-            f"la foto sara' un fotogramma del video. Arriva qualche secondo "
-            f"dopo la notifica, e non ritarda l'apertura della porta."
+            (
+                f"«{nome}» non sa produrre un'istantanea, ma la diretta si apre: "
+                "la foto sara' un fotogramma del video. Arriva qualche secondo "
+                "dopo la notifica, e non ritarda l'apertura della porta."
+            )
         ]
 
     _LOGGER.warning("Da %s non si ottiene nessuna immagine: %s", entity_id, dettaglio)
     return [
-        f"Da «{nome}» non si ottiene nessuna immagine ({dettaglio}): ne' "
-        f"un'istantanea ne' un fotogramma della diretta. La scelta e' salvata, "
-        f"ma la notifica arriverebbe senza foto."
+        (
+            f"Da «{nome}» non si ottiene nessuna immagine ({dettaglio}): ne' "
+            "un'istantanea ne' un fotogramma della diretta. La scelta e' "
+            "salvata, ma la notifica arriverebbe senza foto."
+        )
     ]
 
 
@@ -596,7 +605,9 @@ class AccessCommandView(HomeAssistantView):
 
             elif action == "set_device":
                 cambiamenti = body.get("changes") or {}
-                avvisi += await _prova_camera(hass, store, cambiamenti.get("camera", ""))
+                avvisi += await _prova_camera(
+                    hass, store, cambiamenti.get("camera", "")
+                )
                 await store.async_update_device(body["device_id"], cambiamenti)
 
             elif action == "upsert_window":

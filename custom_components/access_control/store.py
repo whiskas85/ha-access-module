@@ -12,10 +12,12 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
-from homeassistant.util import dt as dt_util, slugify
+from homeassistant.util import dt as dt_util
+from homeassistant.util import slugify
 
 from .const import (
     CARD_ACTIVE,
@@ -25,8 +27,8 @@ from .const import (
     CONF_DEVICES,
     CONF_GATES,
     CONF_LOG,
-    CONF_PEOPLE,
     CONF_NOTIFICATIONS,
+    CONF_PEOPLE,
     CONF_SETTINGS,
     CONF_WINDOWS,
     DEFAULT_DEVICE,

@@ -2,6 +2,7 @@
   "domain": "access_control",
   "name": "Controllo Accessi",
   "after_dependencies": [
+    "ffmpeg",
     "recorder",
     "tag"
   ],

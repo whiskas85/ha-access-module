@@ -38,7 +38,7 @@ jobs:
       # versione fissata: un aggiornamento di ruff non deve far fallire la
       # CI su codice che non è cambiato
       - run: pip install ruff==0.16.0
-      - run: ruff check custom_components scripts
+      - run: ruff check custom_components scripts tests
 
   api:
     name: Coerenza API interne
@@ -52,6 +52,21 @@ jobs:
       # un accesso ad attributo lecito fino a runtime, e diventa un 500 dentro
       # la vista HTTP. Questo lo prende prima.
       - run: python scripts/check_api.py
+
+  crypto:
+    name: Crittografia NTAG 424
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # Una verifica crittografica sbagliata non fallisce: dice «valida» a una
+      # tessera falsa. L'unico modo di accorgersene e' riprodurre i vettori
+      # pubblicati da NXP, e va fatto a ogni push, non una volta sola. Versioni
+      # fissate per lo stesso motivo di ruff.
+      - run: pip install cryptography==50.0.1 pytest==9.1.1
+      - run: pytest tests -q
 
   js:
     name: Sintassi del pannello

@@ -8,6 +8,46 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **`ntag424.py`: la crittografia dell'NTAG 424 DNA**, primo pezzo di §15.
+  Diversificazione delle chiavi (AN10922), decifratura di UID e contatore,
+  verifica della firma SDM (AN12196), controllo del contatore contro i
+  messaggi riprodotti
+  - Isolata da Home Assistant apposta: una verifica crittografica sbagliata
+    non fallisce, dice «valida» a una tessera falsa, e l'unico modo di
+    fidarsene e' farle riprodurre i vettori pubblicati da NXP. Tenerla fuori
+    dal resto e' cio' che permette di provarla senza avviare niente
+  - **Tre chiavi per tre scopi**, derivate dalla master: una protegge la
+    configurazione della tessera, una cifra UID e contatore, una firma. La
+    seconda e' **una per impianto per forza** — per sapere quale derivare
+    servirebbe l'UID, che sta proprio dentro il blocco che cifra — mentre la
+    firma resta per tessera. Chi scoprisse la prima leggerebbe gli UID, che
+    qualunque telefono legge comunque; non potrebbe fabbricare una tessera
+  - Il confronto della firma e' a tempo costante: uno che si ferma al primo
+    byte diverso racconterebbe, col suo tempo di risposta, quanti byte si
+    sono indovinati
+- **`tests/test_ntag424.py`, e un job di CI che lo esegue a ogni push.**
+  Riproduce byte per byte i vettori di AN10922 (`A8DD63A3…9175`) e AN12196
+  (`EF963FF7…1E88` → UID `04DE5F1EACC040`, contatore 61, firma
+  `94EED9EE65337086`), e controlla che vengano rifiutati firma alterata di un
+  bit, UID diverso, contatore diverso, chiave sbagliata e messaggio ripetuto
+
+### Corretto
+
+- **La CI era rossa da piu' release, e non me n'ero accorto.** Due job:
+  - *Ruff* segnalava 16 problemi accumulati nelle ultime versioni — import in
+    disordine, un import inutilizzato, messaggi di avviso scritti come
+    stringhe concatenate dentro una lista senza parentesi (la forma in cui una
+    virgola dimenticata unisce due elementi senza dare errore). Tutti corretti,
+    e ora ruff controlla anche i test
+  - *hassfest* rifiutava `ffmpeg` usato senza essere dichiarato. E' in
+    `after_dependencies` e non in `dependencies`: la seconda lo farebbe
+    avviare a chiunque installi il modulo, contro la scelta di avviarlo solo
+    alla prima foto che lo richiede; la prima dice solo «se c'e', prima di me»
+- `SPEC.md` §15: la tabella delle tre chiavi, con il motivo per cui quella di
+  cifratura non puo' essere per tessera
+
 ## [0.27.0] - 2026-08-31
 
 ### Aggiunto

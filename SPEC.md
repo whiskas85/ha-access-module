@@ -460,16 +460,33 @@ AES-128 che include un contatore. Un clone dell'UID non sa produrre quel
 messaggio, quindi la verifica del cryptogram è ciò che rende la credenziale
 qualcosa di più di un numero letto.
 
-### Le chiavi: una master dentro, una diversa per ogni tessera
+### Le chiavi: una master dentro, e da lei tre chiavi per tre scopi
 
-**La master sta in Home Assistant e non esce mai.** Ogni tessera riceve una
-chiave **derivata** da master e UID, con la diversificazione standard NXP.
+**La master sta in Home Assistant e non esce mai.** Da lei si derivano, con la
+diversificazione AN10922, le chiavi che la tessera usa davvero:
+
+| Chiave | N. sulla tessera | Diversificata per | A cosa serve |
+|---|---|---|---|
+| applicazione | 0 | tessera (UID) | protegge la configurazione: senza cambiarla, chiunque riscrive le impostazioni SDM, perché esce di fabbrica tutta a zero |
+| meta | 1 | **impianto** | cifra UID e contatore nel messaggio |
+| file | 2 | tessera (UID) | **firma** il messaggio: è quella che dimostra l'autenticità |
+
+**Perché la chiave meta non può essere per tessera.** Per scegliere quale
+chiave derivare servirebbe l'UID, che però sta proprio dentro il blocco che
+quella chiave cifra. Quindi è una per impianto, per costruzione. Chi la
+scoprisse leggerebbe gli UID — che del resto qualunque telefono legge dalla
+tessera — ma **non** potrebbe fabbricare una tessera valida: la firma resta
+per tessera.
 
 Non è un dettaglio implementativo: è ciò che rende accettabile tutto il resto.
-Quello che in un qualunque momento può trovarsi fuori da Home Assistant è la
-chiave di *una* tessera — mai la master. Chi la intercettasse potrebbe clonare
-quella tessera, che si mette in blacklist come qualunque tessera persa; non
-potrebbe fabbricarne altre né leggere le esistenti.
+Quello che può trovarsi fuori da Home Assistant è la chiave di firma di *una*
+tessera — mai la master. Chi la intercettasse potrebbe clonare quella tessera,
+che si mette in blacklist come qualunque tessera persa; non potrebbe
+fabbricarne altre.
+
+La crittografia sta in `ntag424.py`, isolata da Home Assistant e verificata
+contro i vettori pubblicati da NXP (AN10922 per la diversificazione, AN12196
+per la firma): `tests/test_ntag424.py`.
 
 ### Programmazione: una finestra, come il censimento
 

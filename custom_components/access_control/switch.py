@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, ENROLLMENT_TIMEOUT_S
-from .entity import AccessEntity
 from .enrollment import EnrollmentManager
+from .entity import AccessEntity
 
 
 async def async_setup_entry(

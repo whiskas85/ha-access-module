@@ -103,10 +103,7 @@ class EnrollmentManager:
         spia rimasta accesa per una finestra chiusa è il difetto peggiore dei
         due e costa solo una chiamata a vuoto.
         """
-        if attivo and device_id:
-            bersagli = [device_id]
-        else:
-            bersagli = list(self.store.devices)
+        bersagli = [device_id] if attivo and device_id else list(self.store.devices)
 
         for bersaglio in bersagli:
             device = await self.store.async_autofill_services(bersaglio)

@@ -53,7 +53,7 @@ async def async_scatta(hass: HomeAssistant, entity_id: str) -> bytes | None:
         immagine = await camera_ha.async_get_image(hass, entity_id, timeout=10)
         if immagine and immagine.content:
             return immagine.content
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         _LOGGER.debug("Scatto diretto non riuscito su %s: %s", entity_id, err)
 
     return await _async_fotogramma(hass, entity_id)
@@ -69,7 +69,7 @@ async def _async_fotogramma(hass: HomeAssistant, entity_id: str) -> bytes | None
 
     try:
         sorgente = await camera_ha.async_get_stream_source(hass, entity_id)
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         _LOGGER.debug("Nessuna diretta da %s: %s", entity_id, err)
         return None
 
@@ -98,7 +98,7 @@ async def _async_fotogramma(hass: HomeAssistant, entity_id: str) -> bytes | None
         # appesa la notifica per sempre.
         async with asyncio.timeout(20):
             return await ffmpeg_ha.async_get_image(hass, sorgente)
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         _LOGGER.warning(
             "Fotogramma dalla diretta di %s non riuscito: %s", entity_id, err
         )
