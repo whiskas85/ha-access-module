@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-09-15
+
 ### Corretto
 
 - **Il lettore restava blu per ore con Home Assistant collegato.** Il blu
