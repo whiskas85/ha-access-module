@@ -45,7 +45,9 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
   Per ora si legge soltanto: la crea la programmazione delle tessere, che
   arriva dopo. Finche' non c'e', nessuna tessera puo' risultare forte
 - Ogni riga del registro accessi porta il campo `verifica`, con l'esito del
-  messaggio della tessera
+  messaggio della tessera. Il sensore *Ultimo accesso* lo mostra fra gli
+  attributi, in parole: si vede che cosa ha dimostrato la tessera senza
+  aprire i log
 - **`tests/test_sdm.py`** (14 test): messaggi dell'impianto fabbricati con le
   stesse operazioni della tessera, l'esempio NXP a chiavi di fabbrica, replay,
   messaggio di un'altra tessera, firma alterata, master di un altro impianto,

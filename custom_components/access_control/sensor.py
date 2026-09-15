@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, RESULT_GRANTED
+from .const import DOMAIN, RESULT_GRANTED, VERIFICA_LABELS
 from .entity import AccessEntity
 
 
@@ -119,6 +119,11 @@ class AccessLastEntrySensor(AccessEntity, SensorEntity):
                     "titolare": event.person,
                     "varco": event.gate,
                     "stato_sistema": event.system_state,
+                    # Che cosa ha dimostrato la tessera, oltre al suo UID:
+                    # si legge dalla scheda del sensore, senza aprire i log.
+                    "verifica": VERIFICA_LABELS.get(
+                        event.verification, event.verification
+                    ),
                 }
         return {}
 
