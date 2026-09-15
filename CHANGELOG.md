@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.30.2] - 2026-09-15
+
 ### Aggiunto
 
 - **Pagina di diagnostica sul lettore, con password.** Per il giorno in cui
