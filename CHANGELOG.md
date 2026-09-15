@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.29.3] - 2026-09-15
+
 ### Aggiunto
 
 - **Segnale «rileggi»: una lettura interrotta a metà non è piu' un
