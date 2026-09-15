@@ -205,7 +205,13 @@ class AccessEvaluator:
             card.sdm_counter if card is not None else None,
         )
         if verifica.esito != ESITO_ASSENTE:
-            _LOGGER.info(
+            # Avviso, non informazione, per tutto quello che non è una firma
+            # verificata: una tessera con le chiavi di fabbrica, un messaggio
+            # falso o uno ripetuto sono cose che chi gestisce l'impianto deve
+            # vedere nel log di sistema senza aver alzato il livello di log.
+            livello = logging.INFO if verifica.forte else logging.WARNING
+            _LOGGER.log(
+                livello,
                 "Messaggio NTAG 424 da %s: %s (contatore %s)",
                 card.label if card is not None else "tessera non censita",
                 VERIFICA_LABELS.get(verifica.esito, verifica.esito),
