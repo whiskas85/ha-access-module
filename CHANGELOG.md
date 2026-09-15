@@ -8,6 +8,26 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Il lettore restava blu per ore con Home Assistant collegato.** Il blu
+  si accendeva a ogni client API che si scollegava, e il visualizzatore di
+  log di ESPHome Device Builder e' un client API come Home Assistant: chiuso
+  quello, il LED diceva «scollegato» e nessuno lo riportava al verde
+  - Collegamenti e scollegamenti adesso chiedono solo di ricontrollare: dopo
+    un secondo `led_pronto` guarda se e' collegato un client che riceve gli
+    stati (`state_subscription_only`), e sceglie il colore da li'
+  - Il ricontrollo non tocca il LED mentre sta dicendo altro (esito,
+    attesa, censimento): quegli script, finendo, tornano da soli al colore
+    giusto
+
+### Aggiunto
+
+- **Diagnostica del lettore: segnale WiFi, da quanto e' acceso, motivo
+  dell'ultimo riavvio.** Il blu dice che il nodo non parla con Home
+  Assistant, non perche': adesso si legge nello storico invece di
+  indovinarlo
+
 ## [0.30.0] - 2026-09-15
 
 ### Aggiunto

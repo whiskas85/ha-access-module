@@ -52,11 +52,19 @@ api:
   encryption:
     key: !secret api_key
 
-  # Il LED segue lo stato del collegamento: appena cade, diventa blu.
+  # Il LED segue lo stato del collegamento con Home Assistant: appena cade,
+  # diventa blu.
+  #
+  # ⚠️ Questi due trigger scattano per OGNI client, non solo per Home
+  # Assistant: anche il visualizzatore di log di ESPHome Device Builder e'
+  # un client API. Accendere il blu qui, alla cieca, voleva dire lettore blu
+  # per ore con Home Assistant perfettamente collegato — e' successo. Qui si
+  # chiede solo di ricontrollare; a decidere il colore e' `led_pronto`, che
+  # guarda se c'e' ancora un client che conta.
   on_client_connected:
-    - script.execute: led_pronto
+    - script.execute: ricontrolla_collegamento
   on_client_disconnected:
-    - script.execute: led_scollegato
+    - script.execute: ricontrolla_collegamento
 
   actions:
     # ═══════════════════════════════════════════════════════════════════════
@@ -594,7 +602,11 @@ script:
       - if:
           condition:
             not:
+              # Conta solo chi riceve gli stati, cioe' Home Assistant. Un
+              # client che legge soltanto i log non tiene in piedi niente:
+              # con solo lui collegato il lettore e' comunque isolato.
               api.connected:
+                state_subscription_only: true
           then:
             - script.execute: led_scollegato
           else:
@@ -710,6 +722,67 @@ script:
           green: 0%
           blue: 100%
           brightness: 40%
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #  Un client si e' collegato o scollegato: rivaluta la spia.
+  #
+  #  Il secondo di attesa non e' prudenza generica. Al collegamento Home
+  #  Assistant si abbona agli stati un attimo DOPO il saluto, e prima di
+  #  quell'attimo `led_pronto` lo vedrebbe come assente; allo scollegamento,
+  #  il client che se ne va puo' essere ancora nell'elenco mentre il trigger
+  #  gira. Aspettare copre tutti e due i casi, e un blu che arriva con un
+  #  secondo di ritardo non costa niente a nessuno.
+  #
+  #  Se il LED sta dicendo altro — esito, attesa, rileggi, censimento — non
+  #  lo si interrompe: ciascuno di quegli script, finendo, torna da solo a
+  #  `led_pronto` o al rosso del blocco.
+  # ═══════════════════════════════════════════════════════════════════════
+  - id: ricontrolla_collegamento
+    mode: restart
+    then:
+      - delay: 1s
+      - if:
+          condition:
+            not:
+              or:
+                - script.is_running: suono_ok
+                - script.is_running: suono_ko
+                - script.is_running: suono_rileggi
+                - script.is_running: suono_allarme
+                - script.is_running: attesa_ha
+                - script.is_running: led_censimento
+          then:
+            - script.execute: led_pronto
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DIAGNOSTICA
+#
+#  Il LED blu dice che il nodo non parla con Home Assistant, non perche'.
+#  Queste tre entita' lo dicono: segnale debole, riavvio (e di che tipo) o
+#  nessuna delle due. Senza, ogni blu andava indovinato dallo storico.
+#
+#  Solo numeri e un motivo di riavvio: niente che riguardi le tessere.
+# ═══════════════════════════════════════════════════════════════════════════
+debug:
+  # Il motivo del riavvio non cambia finche' il nodo resta acceso: non serve
+  # rileggerlo spesso.
+  update_interval: 60s
+
+sensor:
+  - platform: wifi_signal
+    name: "Segnale WiFi"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: uptime
+    name: "Acceso da"
+    update_interval: 60s
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Motivo ultimo riavvio"
+      entity_category: diagnostic
 
 button:
   - platform: template
