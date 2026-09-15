@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-09-15
+
 ### Aggiunto
 
 - **Il lettore legge il messaggio firmato delle NTAG 424.** Nuovo componente
