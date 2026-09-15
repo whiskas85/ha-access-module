@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-09-15
+
 ### Corretto
 
 - **Una tessera persa dal lettore per un solo giro veniva riletta come
