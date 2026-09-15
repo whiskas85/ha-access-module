@@ -8,6 +8,20 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Una NTAG 424 lasciata sul lettore veniva riletta ogni secondo e mezzo.**
+  Dopo la lettura una tessera ISO 14443-4 resta attiva e al giro successivo
+  non risponde: il lettore la dava per tolta, e al giro dopo ancora, ripartita
+  da zero, la trovava «nuova» e la rileggeva. Tre letture in quattro secondi
+  di una tessera senza titolare sono tre dinieghi, e l'impianto va in
+  allarme — e' successo alla prima prova. Ora il campo si spegne a ogni giro
+  anche quando la tessera e' la stessa: riparte da zero, si ripresenta con lo
+  stesso UID, e resta una lettura sola
+  - Il difetto viene dal PN532 di ESPHome, che il componente ha copiato: con
+    le MIFARE Classic lo stesso meccanismo spiega il vecchio commento sul
+    rate limiter, «evita che una tessera appoggiata inondi l'API»
+
 ## [0.29.0] - 2026-09-15
 
 ### Aggiunto
