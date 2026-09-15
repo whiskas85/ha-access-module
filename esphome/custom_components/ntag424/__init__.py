@@ -19,11 +19,15 @@ AUTO_LOAD = ["pn532"]
 DEPENDENCIES = ["i2c"]
 
 CONF_ON_LETTURA = "on_lettura"
+CONF_ON_LETTURA_INCOMPLETA = "on_lettura_incompleta"
 
 ntag424_ns = cg.esphome_ns.namespace("ntag424")
 Ntag424Pn532I2C = ntag424_ns.class_("Ntag424Pn532I2C", pn532.PN532, i2c.I2CDevice)
 LetturaTrigger = ntag424_ns.class_(
     "LetturaTrigger", automation.Trigger.template(cg.std_string, cg.std_string)
+)
+LetturaIncompletaTrigger = ntag424_ns.class_(
+    "LetturaIncompletaTrigger", automation.Trigger.template(cg.std_string)
 )
 
 CONFIG_SCHEMA = (
@@ -33,6 +37,13 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_ON_LETTURA): automation.validate_automation(
                 {
                     cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(LetturaTrigger),
+                }
+            ),
+            cv.Optional(CONF_ON_LETTURA_INCOMPLETA): automation.validate_automation(
+                {
+                    cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(
+                        LetturaIncompletaTrigger
+                    ),
                 }
             ),
         }
@@ -52,3 +63,8 @@ async def to_code(config):
         await automation.build_automation(
             trigger, [(cg.std_string, "uid"), (cg.std_string, "sdm")], conf
         )
+
+    for conf in config.get(CONF_ON_LETTURA_INCOMPLETA, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
+        cg.add(var.register_incompleta_trigger(trigger))
+        await automation.build_automation(trigger, [(cg.std_string, "uid")], conf)

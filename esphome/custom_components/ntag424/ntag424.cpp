@@ -98,19 +98,35 @@ void Ntag424Pn532I2C::loop() {
   char uid_buf[nfc::FORMAT_UID_BUFFER_SIZE];
   std::string uid = nfc::format_uid_to(uid_buf, nfcid);
 
-  // Il link si chiede solo a chi parla ISO 14443-4. Una MIFARE Classic non lo
-  // saprebbe fare, e una lettura fallita non toglie niente: resta l'UID, cioè
-  // esattamente quello che il lettore riferiva prima. Se non si legge, non si
-  // inventa niente — sarà Home Assistant a trattarla come una lettura debole.
+  // Il link si chiede solo a chi parla ISO 14443-4: una MIFARE Classic non lo
+  // saprebbe fare, e per lei resta l'UID, come sempre.
   std::string link;
   if ((read[4] & SAK_ISO14443_4) != 0) {
-    if (this->leggi_link_(link)) {
-      // La lunghezza e basta: il contenuto è il messaggio della tessera, e nei
-      // log non ci deve finire (SPEC.md §11).
-      ESP_LOGD(TAG, "Messaggio della tessera letto (%u caratteri)", (unsigned) link.size());
-    } else {
-      ESP_LOGD(TAG, "Tessera ISO 14443-4 senza un messaggio leggibile");
-      link.clear();
+    switch (this->leggi_link_(link)) {
+      case EsitoLink::LETTO:
+        // La lunghezza e basta: il contenuto è il messaggio della tessera, e
+        // nei log non ci deve finire (SPEC.md §11).
+        ESP_LOGD(TAG, "Messaggio della tessera letto (%u caratteri)", (unsigned) link.size());
+        break;
+      case EsitoLink::ASSENTE:
+        // Ha risposto a tutto e un link SDM non ce l'ha: è una lettura
+        // completa del solo UID, e come tale si riferisce.
+        ESP_LOGD(TAG, "Tessera ISO 14443-4 senza messaggio SDM");
+        link.clear();
+        break;
+      case EsitoLink::INTERROTTO:
+        // Si è fermata a metà. Riferire l'UID da solo sarebbe riferire una
+        // lettura che non c'è stata — per una tessera forte, un diniego da
+        // clone a chi ha solo tolto la mano troppo presto. Si chiede di
+        // riappoggiarla, e si dimentica la tessera: se è ancora lì, al giro
+        // dopo la si rilegge da capo (SPEC.md §15).
+        ESP_LOGW(TAG, "Lettura interrotta a metà: la tessera va riappoggiata");
+        this->current_uid_ = {};
+        this->assenze_ = 0;
+        for (auto *trigger : this->triggers_incompleta_)
+          trigger->process(uid);
+        this->turn_off_rf_();
+        return;
     }
   }
 
@@ -141,71 +157,99 @@ void Ntag424Pn532I2C::tessera_non_vista_() {
   this->assenze_ = 0;
 }
 
-// Un comando alla tessera attraverso il PN532. Riesce solo se il PN532 non
-// segnala errori, se la risposta sta tutta in un pacchetto (niente bit MI) e
-// se la tessera chiude con 90 00. Tutto il resto è un fallimento, senza
-// distinzioni: a chi chiama interessa solo se può fidarsi dei dati.
-bool Ntag424Pn532I2C::apdu_(const std::vector<uint8_t> &comando, std::vector<uint8_t> &risposta) {
+// Un comando alla tessera attraverso il PN532, e quale dei tre esiti ha avuto.
+//
+// La distinzione che conta è fra una tessera che dice di no e una tessera che
+// non risponde. La prima ha risposto per intero con una parola di stato
+// diversa da 90 00: è un fatto sulla tessera. La seconda — il PN532 segnala un
+// errore di radio, o non arriva niente — è un fatto sul gesto: la tessera se
+// n'è andata, o non era appoggiata bene.
+EsitoApdu Ntag424Pn532I2C::apdu_(const std::vector<uint8_t> &comando, std::vector<uint8_t> &risposta) {
   std::vector<uint8_t> frame = {pn532::PN532_COMMAND_INDATAEXCHANGE, 0x01};
   frame.insert(frame.end(), comando.begin(), comando.end());
   if (!this->write_command_(frame))
-    return false;
+    return EsitoApdu::INTERROTTO;
 
   std::vector<uint8_t> dati;
-  if (!this->read_response(pn532::PN532_COMMAND_INDATAEXCHANGE, dati))
-    return false;
+  if (!this->read_response(pn532::PN532_COMMAND_INDATAEXCHANGE, dati) || dati.empty())
+    return EsitoApdu::INTERROTTO;
 
   // [stato del PN532] [dati della tessera…] [SW1] [SW2]
-  if (dati.size() < 3 || dati[0] != 0x00)
-    return false;
+  //
+  // Nei 6 bit bassi dello stato c'è l'errore di radio: timeout, CRC, trama.
+  // Il bit MI invece dice che la risposta continua in un altro pacchetto: la
+  // tessera ha risposto, ma più di quanto un nostro comando chieda.
+  if ((dati[0] & 0x3F) != 0x00)
+    return EsitoApdu::INTERROTTO;
+  if (dati[0] != 0x00 || dati.size() < 3)
+    return EsitoApdu::RIFIUTATO;
   if (dati[dati.size() - 2] != 0x90 || dati[dati.size() - 1] != 0x00)
-    return false;
+    return EsitoApdu::RIFIUTATO;
 
   risposta.assign(dati.begin() + 1, dati.end() - 2);
-  return true;
+  return EsitoApdu::OK;
 }
 
 // Il link scritto nella tessera, senza il prefisso (https://…). È ciò che la
 // tessera produce a ogni lettura quando l'SDM è acceso: UID e contatore
 // cifrati, più la firma, nel punto in cui erano gli zeri segnaposto.
-bool Ntag424Pn532I2C::leggi_link_(std::string &link) {
+//
+// Un comando che non ha risposta interrompe tutto: la lettura è a metà. Un
+// comando rifiutato, o una risposta di forma inattesa, dice invece che questa
+// tessera un link SDM non ce l'ha — una DESFire senza applicazione NDEF, un
+// file letto per intero ma diverso dal nostro.
+EsitoLink Ntag424Pn532I2C::leggi_link_(std::string &link) {
   std::vector<uint8_t> risposta;
-  if (!this->apdu_(SELEZIONA_APPLICAZIONE, risposta))
-    return false;
-  if (!this->apdu_(SELEZIONA_FILE_NDEF, risposta))
-    return false;
+  auto passo = [](EsitoApdu esito) {
+    return esito == EsitoApdu::INTERROTTO ? EsitoLink::INTERROTTO : EsitoLink::ASSENTE;
+  };
+
+  EsitoApdu esito = this->apdu_(SELEZIONA_APPLICAZIONE, risposta);
+  if (esito != EsitoApdu::OK)
+    return passo(esito);
+  esito = this->apdu_(SELEZIONA_FILE_NDEF, risposta);
+  if (esito != EsitoApdu::OK)
+    return passo(esito);
 
   // I primi due byte del file sono la lunghezza del messaggio NDEF.
-  if (!this->apdu_({0x00, 0xB0, 0x00, 0x00, 0x02}, risposta) || risposta.size() != 2)
-    return false;
+  esito = this->apdu_({0x00, 0xB0, 0x00, 0x00, 0x02}, risposta);
+  if (esito != EsitoApdu::OK)
+    return passo(esito);
+  if (risposta.size() != 2)
+    return EsitoLink::ASSENTE;
   uint16_t lunghezza = (uint16_t(risposta[0]) << 8) | risposta[1];
   if (lunghezza < 6 || lunghezza > MASSIMO_NDEF)
-    return false;
+    return EsitoLink::ASSENTE;
 
   std::vector<uint8_t> ndef;
-  if (!this->apdu_({0x00, 0xB0, 0x00, 0x02, uint8_t(lunghezza)}, ndef) || ndef.size() != lunghezza)
-    return false;
+  esito = this->apdu_({0x00, 0xB0, 0x00, 0x02, uint8_t(lunghezza)}, ndef);
+  if (esito != EsitoApdu::OK)
+    return passo(esito);
+  if (ndef.size() != lunghezza)
+    return EsitoLink::ASSENTE;
 
   // Un solo record, breve, di tipo URI: MB e ME accesi, SR acceso, nessun ID,
   // TNF «well-known», tipo «U». È l'unica forma che produce la configurazione
   // SDM di questo impianto; qualunque altra cosa non si prova a interpretare.
   if ((ndef[0] & 0xF8) != 0xD0 || (ndef[0] & 0x07) != 0x01)
-    return false;
+    return EsitoLink::ASSENTE;
   if (ndef[1] != 1 || ndef[3] != 'U')
-    return false;
+    return EsitoLink::ASSENTE;
   uint8_t lunghezza_dati = ndef[2];
   if (lunghezza_dati < 2 || 4U + lunghezza_dati != ndef.size())
-    return false;
+    return EsitoLink::ASSENTE;
 
   // ndef[4] è il codice del prefisso: non serve, conta la parte dopo.
   link.clear();
   for (size_t i = 5; i < ndef.size(); i++) {
     uint8_t c = ndef[i];
-    if (c < 0x21 || c > 0x7E)
-      return false;
+    if (c < 0x21 || c > 0x7E) {
+      link.clear();
+      return EsitoLink::ASSENTE;
+    }
     link.push_back(char(c));
   }
-  return true;
+  return EsitoLink::LETTO;
 }
 
 void Ntag424Pn532I2C::dump_config() {

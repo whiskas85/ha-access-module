@@ -8,6 +8,25 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Segnale «rileggi»: una lettura interrotta a metà non è piu' un
+  diniego.** Se la tessera smette di rispondere mentre il lettore le chiede il
+  messaggio — tolta troppo presto, appoggiata storta — il nodo non manda
+  niente a Home Assistant e suona tre bip rapidissimi con un lampo giallo;
+  se la tessera e' ancora li', la rilegge da solo al giro dopo
+  - Il nodo distingue una tessera che *non risponde* (errore di radio,
+    nessuna risposta: la lettura e' a meta') da una che *risponde e dice di
+    no* (niente applicazione NDEF, file di forma diversa: la lettura e'
+    completa, del solo UID). Solo la prima e' «rileggi»; la seconda va a
+    Home Assistant come prima, e per una tessera forte resta un diniego da
+    clone
+  - Il segnale lo decide il nodo senza sapere chi sia la tessera: e' uguale
+    per qualunque tessera, e non dice niente sull'autorizzazione (§8.2)
+  - Pulsante «Test suono rileggi» sul nodo
+- SPEC.md §15: le decisioni prese dopo la prima prova — master nei backup,
+  lettura interrotta, stessa tessera ripetuta
+
 ## [0.29.2] - 2026-09-15
 
 ### Corretto

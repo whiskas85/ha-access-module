@@ -329,6 +329,27 @@ binary_sensor:
 # di prima) e `sdm` il link della tessera, vuoto se non ne ha uno.
 ntag424:
   update_interval: 500ms
+
+  # La tessera si è vista ma ha smesso di rispondere a metà: tolta troppo
+  # presto, appoggiata storta. Non è una lettura, e a Home Assistant non si
+  # manda niente: si chiede di riappoggiarla, e se è ancora lì il componente
+  # la rilegge da solo al giro dopo. Una lettura interrotta non è un attacco
+  # e non è un diniego (SPEC.md §15).
+  #
+  # Il segnale lo decide il nodo senza sapere chi sia la tessera, quindi è
+  # uguale per qualunque tessera, censita o no: dice com'è andata la lettura,
+  # non come sarebbe andato l'accesso (§8.2). A lettura spenta per l'allarme
+  # si risponde come a qualunque lettura in quello stato.
+  on_lettura_incompleta:
+    then:
+      - if:
+          condition:
+            switch.is_off: lettura_abilitata
+          then:
+            - script.execute: bip_ko
+          else:
+            - script.execute: suono_rileggi
+
   on_lettura:
     then:
       # ═══════════════════════════════════════════════════════════════════
@@ -476,6 +497,23 @@ script:
             - switch.turn_off: buzzer
             - delay: 150ms
       - script.execute: led_bloccato
+
+  # RILEGGI — tre bip rapidissimi + lampo giallo: la tessera non si è letta
+  # fino in fondo, va riappoggiata. Veloce apposta, per non confondersi con
+  # l'attesa (tre bip lenti, dopo 3 s) né con l'OK (due bip).
+  - id: suono_rileggi
+    mode: restart
+    then:
+      - script.execute: led_attesa
+      - repeat:
+          count: 3
+          then:
+            - switch.turn_on: buzzer
+            - delay: 40ms
+            - switch.turn_off: buzzer
+            - delay: 60ms
+      - delay: 300ms
+      - script.execute: led_pronto
 
   # HA non risponde — tre bip corti distanziati
   - id: attesa_ha
@@ -638,6 +676,10 @@ button:
     name: "Test suono allarme"
     on_press:
       - script.execute: suono_allarme
+  - platform: template
+    name: "Test suono rileggi"
+    on_press:
+      - script.execute: suono_rileggi
 
   # Prova dei colori senza passare una tessera: serve a capire subito se
   # bianco e grigio sono invertiti, prima di montare tutto nella scatola.

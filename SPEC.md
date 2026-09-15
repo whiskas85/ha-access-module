@@ -287,6 +287,7 @@ sempre — a distinguerle è il modulo, non lui.
 | OK | due bip corti ravvicinati (60 ms on / 80 ms off / 60 ms on) |
 | KO | un bip lungo (1200 ms) |
 | HA non risponde | tre bip corti distanziati, dopo 3 s di attesa |
+| Rileggi | tre bip rapidissimi (40 ms on / 60 ms off) + lampo giallo — lettura interrotta a metà, la decide il nodo (§15) |
 
 ---
 
@@ -550,6 +551,28 @@ replay, e va trattato come un diniego — non come un errore.
   messaggio si verifica, anche se poi la lettura viene negata per l'orario.
 - La firma si prova sull'UID letto in anticollisione, non su quello
   decifrato: il messaggio deve venire dalla tessera che si è presentata.
+
+### Decisioni prese dopo la prima prova sul campo
+
+- **La master va nei backup di Home Assistant.** Chi avesse un backup e la
+  sua chiave di cifratura potrebbe rifare le tessere; ma una master fuori dai
+  backup vuol dire che, perso Home Assistant, si perdono tutte le tessere
+  forti. Scelto il backup (Marco, 15/09/2026).
+- **Una lettura interrotta a metà è una lettura non riuscita, non un
+  attacco.** La riconosce il nodo da solo: la tessera ha smesso di
+  rispondere ai comandi (errore di radio, nessuna risposta), invece di
+  rispondere per intero senza un messaggio SDM. Non manda niente a Home
+  Assistant — non c'è niente di certo da mandare — e suona «rileggi» (§8);
+  se la tessera è ancora lì, la rilegge da solo al giro dopo.
+  - Resta negata come clone la lettura **completa** senza messaggio di una
+    tessera forte: lì la tessera ha risposto a tutto, e un messaggio non ce
+    l'aveva.
+  - Il segnale non viola §8.2: il nodo lo decide senza sapere chi sia la
+    tessera, quindi è uguale per qualunque tessera, censita o no, valida o
+    no. Dice com'è andata la lettura, non come sarebbe andato l'accesso.
+- **La stessa tessera negata di nuovo entro 10 secondi conta un tentativo
+  solo** verso l'allarme per letture errate: ripassarla non porta a niente.
+  Tessere diverse contano una per una.
 
 ### Il limite del messaggio SDM: non è una sfida
 

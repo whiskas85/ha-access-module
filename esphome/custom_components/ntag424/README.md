@@ -14,9 +14,18 @@ verifica della firma e il controllo del contatore stanno in Home Assistant
 2. Se la tessera parla ISO 14443-4 (SAK bit 6), le chiede il file NDEF con i
    comandi di un telefono: selezione dell'applicazione `D2760000850101`,
    selezione del file `E104`, lettura della lunghezza e poi del messaggio.
-3. Se il messaggio è un solo record URI, ne riferisce il testo. Qualunque
-   altra forma, o un errore a qualunque passo, lascia il link vuoto: la
-   lettura resta quella del solo UID, cioè debole.
+3. Se il messaggio è un solo record URI, ne riferisce il testo con
+   `on_lettura`. Se la tessera risponde a tutto ma un messaggio di quella
+   forma non ce l'ha, il link resta vuoto: è una lettura completa del solo
+   UID, cioè debole.
+4. Se invece la tessera **smette di rispondere** a metà (errore di radio,
+   nessuna risposta), non è una lettura: parte `on_lettura_incompleta` con
+   l'UID, non si riferisce niente, e la tessera si rilegge da capo al giro
+   dopo se è ancora lì.
+
+Una tessera si considera tolta solo dopo tre giri di fila senza vederla: il
+PN532 ogni tanto ne perde una per un giro, e senza questa tolleranza la
+rileggerebbe come nuova.
 
 Per una MIFARE Classic non cambia niente rispetto a prima.
 
