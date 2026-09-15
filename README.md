@@ -69,6 +69,11 @@ Si apre solo quando **entrambe** dicono sì.
 Dopo **N letture rifiutate di fila** (default 3), o se passa una tessera
 disabilitata o in blacklist, o se un lettore viene manomesso:
 
+> La stessa tessera negata di nuovo entro 10 secondi conta una volta sola:
+> l'allarme è contro chi prova tessere *diverse*, e ripassare la stessa non
+> porta a niente.
+
+
 - i lettori **smettono di leggere** — LED rosso fisso
 - si esce **solo con lo sblocco manuale**
 - l'allarme **sopravvive a un riavvio**: non si esce da un blocco di sicurezza

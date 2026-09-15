@@ -8,6 +8,28 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Corretto
+
+- **Una tessera persa dal lettore per un solo giro veniva riletta come
+  nuova.** La correzione della 0.29.1 non bastava: il PN532 ogni tanto non
+  vede per un giro una tessera che e' ancora li', e il lettore la dava per
+  tolta subito. Al giro dopo sembrava nuova e veniva riletta — alla seconda
+  prova una tessera appoggiata una volta sola e' stata letta due volte a un
+  secondo di distanza, con i contatori consecutivi (14, 15) a dimostrarlo, e
+  il terzo diniego di fila ha fatto scattare l'allarme. Ora una tessera e'
+  tolta solo dopo **tre giri di fila** senza vederla, un secondo e mezzo;
+  una tessera diversa si legge comunque subito
+
+### Cambiato
+
+- **La stessa tessera negata di nuovo entro 10 secondi non conta come un
+  altro tentativo** verso l'allarme per letture errate. L'allarme esiste
+  contro chi prova tessere *diverse*; ripassare la stessa non porta a niente,
+  e contarla tre volte trasformava in un allarme una tessera appoggiata male
+  — due volte, alla prima prova. Tessere diverse contano una per una come
+  prima; registro e notifiche restano per ogni lettura; blacklist e tessera
+  disabilitata fanno scattare l'allarme come prima
+
 ## [0.29.1] - 2026-09-15
 
 ### Corretto

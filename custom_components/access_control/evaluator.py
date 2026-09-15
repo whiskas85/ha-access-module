@@ -75,6 +75,10 @@ from .store import AccessStore
 
 _LOGGER = logging.getLogger(__name__)
 
+# Entro quanti secondi dal diniego precedente la stessa tessera negata di
+# nuovo non conta come un altro tentativo (vedi `_ripetizione`).
+RIPETIZIONE_STESSA_TESSERA_S = 10.0
+
 
 class Decision:
     """Esito della valutazione, prima che venga attuato qualcosa."""
@@ -118,6 +122,8 @@ class AccessEvaluator:
         # Assistant. Quello nel lettore non basta: un firmware sostituito lo
         # aggirerebbe, e il lettore sta fuori casa.
         self._recent: deque[float] = deque(maxlen=256)
+        # L'ultima tessera negata e quando, per riconoscere le ripetizioni.
+        self._ultimo_diniego: tuple[str, float] | None = None
 
     # ── ingresso principale ────────────────────────────────────────────────
 
@@ -330,10 +336,35 @@ class AccessEvaluator:
         if self.store.in_alarm:
             return
 
+        if self._ripetizione(event.uid):
+            return
+
         streak = await self.store.async_register_failure()
         soglia = int(settings.get("alarm_threshold") or 3)
         if streak >= soglia:
             await self._async_raise_alarm(ALARM_FAILED_READS, event)
+
+    def _ripetizione(self, uid: str) -> bool:
+        """La stessa tessera, negata di nuovo a pochi secondi dalla volta prima?
+
+        Allora non è un tentativo nuovo. L'allarme per letture errate esiste
+        contro chi prova tessere *diverse* — il Flipper che cicla codici — e
+        ripassare la stessa non porta a niente: è stata negata la prima volta
+        e lo sarà ancora. Contarla tre volte trasformava in un allarme una
+        tessera appoggiata male, ed è successo due volte alla prima prova.
+
+        La finestra scorre: ogni ripetizione la allunga. Registro e notifiche
+        restano per ogni lettura; cambia solo il conteggio verso l'allarme.
+        """
+        adesso = time.monotonic()
+        precedente = self._ultimo_diniego
+        self._ultimo_diniego = (uid, adesso)
+        return (
+            bool(uid)
+            and precedente is not None
+            and precedente[0] == uid
+            and adesso - precedente[1] < RIPETIZIONE_STESSA_TESSERA_S
+        )
 
     async def async_raise_alarm(self, motivo: str, lettore: str = "") -> None:
         """Porta il sistema in allarme dall'esterno (tamper, o a mano)."""
