@@ -29,6 +29,18 @@ static const uint8_t MASSIMO_NDEF = 200;
 // PN532 in quel caso ha già fatto da solo la RATS durante l'anticollisione.
 static const uint8_t SAK_ISO14443_4 = 0x20;
 
+// Quanti giri di fila senza vederla, prima di dare per tolta una tessera: a
+// 500 ms per giro, un secondo e mezzo.
+//
+// Il PN532 ogni tanto perde per un giro una tessera che è ancora lì — alla
+// prima prova una NTAG 424 appena appoggiata è stata letta due volte a un
+// secondo di distanza, con i contatori consecutivi a dimostrarlo. Data per
+// tolta al primo giro mancato, al giro dopo sembrava nuova e veniva riletta:
+// una lettura in più a ogni appoggio, e con tre dinieghi di fila l'impianto
+// va in allarme. Una tessera tolta e riappoggiata entro questo tempo resta
+// la stessa lettura; se il gesto era voluto, basta ripassarla.
+static const uint8_t ASSENZE_PER_TOLTA = 3;
+
 // ── lettura ────────────────────────────────────────────────────────────────
 
 void Ntag424Pn532I2C::loop() {
@@ -49,7 +61,7 @@ void Ntag424Pn532I2C::loop() {
   this->requested_read_ = false;
 
   if (!success || read.empty() || read[0] != 1) {
-    this->tessera_andata_via_();
+    this->tessera_non_vista_();
     return;
   }
 
@@ -60,6 +72,7 @@ void Ntag424Pn532I2C::loop() {
   if (nfcid_length > nfc::NFC_UID_MAX_LENGTH || read.size() < 6U + nfcid_length)
     return;
   nfc::NfcTagUid nfcid(read.begin() + 6, read.begin() + 6 + nfcid_length);
+  this->assenze_ = 0;
 
   // Stessa tessera ancora appoggiata: è già stata riferita.
   //
@@ -110,14 +123,22 @@ void Ntag424Pn532I2C::loop() {
   this->turn_off_rf_();
 }
 
-void Ntag424Pn532I2C::tessera_andata_via_() {
-  if (!this->current_uid_.empty()) {
-    auto tag = std::make_unique<nfc::NfcTag>(this->current_uid_);
-    for (auto *trigger : this->triggers_ontagremoved_)
-      trigger->process(tag);
-  }
-  this->current_uid_ = {};
+// Un giro senza tessera. Tolta davvero solo dopo ASSENZE_PER_TOLTA giri di
+// fila: fino ad allora si continua a ricordarla, così se ricompare è la
+// stessa e non si rilegge. Una tessera *diversa* invece si legge subito,
+// perché il confronto in loop() è sull'UID.
+void Ntag424Pn532I2C::tessera_non_vista_() {
   this->turn_off_rf_();
+  if (this->current_uid_.empty())
+    return;
+  if (++this->assenze_ < ASSENZE_PER_TOLTA)
+    return;
+
+  auto tag = std::make_unique<nfc::NfcTag>(this->current_uid_);
+  for (auto *trigger : this->triggers_ontagremoved_)
+    trigger->process(tag);
+  this->current_uid_ = {};
+  this->assenze_ = 0;
 }
 
 // Un comando alla tessera attraverso il PN532. Riesce solo se il PN532 non

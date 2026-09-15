@@ -42,11 +42,13 @@ class Ntag424Pn532I2C : public pn532::PN532, public i2c::I2CDevice {
   bool read_response(uint8_t command, std::vector<uint8_t> &data) override;
   uint8_t read_response_length_();
 
-  void tessera_andata_via_();
+  void tessera_non_vista_();
   bool apdu_(const std::vector<uint8_t> &comando, std::vector<uint8_t> &risposta);
   bool leggi_link_(std::string &link);
 
   std::vector<LetturaTrigger *> triggers_lettura_;
+  // Giri consecutivi in cui la tessera riferita non si è vista (vedi .cpp).
+  uint8_t assenze_{0};
 };
 
 }  // namespace esphome::ntag424
