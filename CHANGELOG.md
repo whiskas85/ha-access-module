@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-09-15
+
 ### Aggiunto
 
 - **Programmazione delle NTAG 424 dal lettore: «Programma» sulla tessera.**
