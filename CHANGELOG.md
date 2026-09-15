@@ -8,6 +8,41 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Programmazione delle NTAG 424 dal lettore: «Programma» sulla tessera.**
+  Il lettore fa da tramite e basta — trattiene la tessera e le passa i
+  comandi di Home Assistant, uno alla volta — e tutta la crittografia resta
+  in Home Assistant (SPEC.md §15, scelta «B»). La tessera esce con le chiavi
+  dell'impianto, il messaggio SDM configurato e la scrittura chiusa, e da
+  quel momento e' forte
+  - **Nessuna chiave passa dal lettore.** Le chiavi nuove viaggiano dentro
+    ChangeKey, cifrate con chiavi di sessione che nascono da una sfida e che
+    il lettore non puo' ricavare. Un test registra tutto il traffico del
+    tramite e controlla che non ci compaia ne' la master ne' una chiave
+  - **Si programma solo la tessera scelta.** Il lettore sta in strada:
+    un'altra tessera appoggiata durante la finestra viene rifiutata senza
+    toccarla
+  - **Una programmazione interrotta si riprende.** La chiave 0 cambia per
+    ultima: finche' non e' cambiata la tessera si riapre con quella di
+    fabbrica, e le chiavi gia' cambiate si riconoscono. Provato su venti
+    punti di interruzione diversi
+  - **Alla fine si prova.** Il link si legge come lo leggerebbe la porta e si
+    verifica con le chiavi dell'impianto, poi ci si riautentica con la
+    chiave 0 nuova. Una tessera che non passa la prova non e' programmata,
+    qualunque cosa abbiano risposto i passi prima
+  - La master nasce alla prima programmazione, dal generatore del sistema,
+    e si salva prima di essere usata. Sta nei backup, per scelta
+  - Il lettore rilascia da solo una tessera trattenuta se da 5 secondi non
+    arrivano comandi: Home Assistant che sparisce a meta' non lo lascia
+    bloccato
+- `ntag424.py`: autenticazione EV2, comandi cifrati e firmati, ChangeKey,
+  CRC32 — **verificati byte per byte contro le tabelle 14, 18, 25 e 26 di
+  NXP AN12196**
+- `tests/test_programmazione.py` e `tests/simulatore_ntag424.py`: la sequenza
+  intera contro una NTAG 424 simulata — tessera di fabbrica, riprogrammazione,
+  interruzioni, risposta manomessa, chiavi di altri
+
 ## [0.29.3] - 2026-09-15
 
 ### Aggiunto

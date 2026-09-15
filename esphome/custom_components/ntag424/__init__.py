@@ -20,6 +20,7 @@ DEPENDENCIES = ["i2c"]
 
 CONF_ON_LETTURA = "on_lettura"
 CONF_ON_LETTURA_INCOMPLETA = "on_lettura_incompleta"
+CONF_ON_TESSERA_PRONTA = "on_tessera_pronta"
 
 ntag424_ns = cg.esphome_ns.namespace("ntag424")
 Ntag424Pn532I2C = ntag424_ns.class_("Ntag424Pn532I2C", pn532.PN532, i2c.I2CDevice)
@@ -28,6 +29,9 @@ LetturaTrigger = ntag424_ns.class_(
 )
 LetturaIncompletaTrigger = ntag424_ns.class_(
     "LetturaIncompletaTrigger", automation.Trigger.template(cg.std_string)
+)
+TesseraProntaTrigger = ntag424_ns.class_(
+    "TesseraProntaTrigger", automation.Trigger.template(cg.std_string)
 )
 
 CONFIG_SCHEMA = (
@@ -43,6 +47,13 @@ CONFIG_SCHEMA = (
                 {
                     cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(
                         LetturaIncompletaTrigger
+                    ),
+                }
+            ),
+            cv.Optional(CONF_ON_TESSERA_PRONTA): automation.validate_automation(
+                {
+                    cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(
+                        TesseraProntaTrigger
                     ),
                 }
             ),
@@ -67,4 +78,9 @@ async def to_code(config):
     for conf in config.get(CONF_ON_LETTURA_INCOMPLETA, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
         cg.add(var.register_incompleta_trigger(trigger))
+        await automation.build_automation(trigger, [(cg.std_string, "uid")], conf)
+
+    for conf in config.get(CONF_ON_TESSERA_PRONTA, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID])
+        cg.add(var.register_pronta_trigger(trigger))
         await automation.build_automation(trigger, [(cg.std_string, "uid")], conf)

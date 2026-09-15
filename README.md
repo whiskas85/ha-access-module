@@ -164,7 +164,10 @@ Rilevato dalla lunghezza dell'UID, che è normata da ISO/IEC 14443-3:
 >
 > Una NTAG 424 con le chiavi di fabbrica produce un messaggio che si verifica,
 > ma resta `debole`: quelle chiavi le conosce chiunque. Per diventare forte va
-> programmata con le chiavi dell'impianto (SPEC.md §15, in arrivo).
+> programmata con le chiavi dell'impianto: pulsante **Programma** sulla
+> tessera, poi la si appoggia al lettore entro un minuto e la si tiene ferma
+> fino ai due bip. Il lettore fa solo da tramite: le chiavi restano in Home
+> Assistant (SPEC.md §15).
 >
 > Che 7 byte non distinguano un NTAG213 da un NTAG424 non è quindi un
 > problema: finché non c'è un messaggio verificato, contano uguale.

@@ -35,6 +35,13 @@ class LetturaIncompletaTrigger : public Trigger<std::string> {
   void process(const std::string &uid) { this->trigger(uid); }
 };
 
+// Una tessera ISO 14443-4 è ferma sul lettore, in attesa dei comandi di Home
+// Assistant: il tramite è aperto e la programmazione può cominciare.
+class TesseraProntaTrigger : public Trigger<std::string> {
+ public:
+  void process(const std::string &uid) { this->trigger(uid); }
+};
+
 // Come è andato un comando: `RIFIUTATO` vuol dire che la tessera ha risposto,
 // e ha detto di no; `INTERROTTO` che non ha risposto affatto.
 enum class EsitoApdu : uint8_t { OK, RIFIUTATO, INTERROTTO };
@@ -49,7 +56,21 @@ enum class EsitoLink : uint8_t { LETTO, ASSENTE, INTERROTTO };
 class Ntag424Pn532I2C : public pn532::PN532, public i2c::I2CDevice {
  public:
   void loop() override;
+  void update() override;
   void dump_config() override;
+
+  // ── tramite (SPEC.md §15, scelta «B») ──
+  //
+  // Con il tramite aperto, la prossima tessera ISO 14443-4 non viene letta:
+  // resta ferma sul lettore e parla solo attraverso `scambia`, un comando
+  // alla volta, con i byte decisi da Home Assistant. Il nodo non sa cosa
+  // passa: niente chiavi, niente crittografia, niente decisioni.
+  void set_tramite(bool attivo);
+  // Un comando alla tessera trattenuta, in esadecimale; la risposta intera,
+  // parola di stato compresa, in esadecimale. Vuota se non c'è una tessera
+  // trattenuta o se non ha risposto — e allora la si rilascia.
+  std::string scambia(const std::string &comando);
+  void register_pronta_trigger(TesseraProntaTrigger *trigger) { this->triggers_pronta_.push_back(trigger); }
 
   void register_lettura_trigger(LetturaTrigger *trigger) { this->triggers_lettura_.push_back(trigger); }
   void register_incompleta_trigger(LetturaIncompletaTrigger *trigger) {
@@ -69,6 +90,12 @@ class Ntag424Pn532I2C : public pn532::PN532, public i2c::I2CDevice {
 
   std::vector<LetturaTrigger *> triggers_lettura_;
   std::vector<LetturaIncompletaTrigger *> triggers_incompleta_;
+  std::vector<TesseraProntaTrigger *> triggers_pronta_;
+
+  void rilascia_();
+  bool tramite_{false};
+  bool trattenuta_{false};
+  uint32_t ultimo_scambio_{0};
   // Giri consecutivi in cui la tessera riferita non si è vista (vedi .cpp).
   uint8_t assenze_{0};
 };

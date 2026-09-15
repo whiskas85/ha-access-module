@@ -1445,6 +1445,12 @@ class AccessControlPanel extends HTMLElement {
       if (c.state !== "blacklist")
         b.push(`<button class="mini warn" data-set="${esc(c.id)}|blacklist"
                   title="Revoca e allarma se ripassa">${icona("block")}<span>Blacklist</span></button>`);
+      // Solo le tessere che possono essere NTAG 424 (UID di 7 byte), e non
+      // quelle già programmate: riprogrammarle si può, ma dal pulsante
+      // sembrerebbe un gesto da fare, e non lo è.
+      if ((c.uid || "").split("-").length === 7 && c.technology !== "ntag424")
+        b.push(`<button class="mini" data-program-card="${esc(c.id)}"
+                  title="Scrive sulla tessera le chiavi dell'impianto">${icona("rfid")}<span>Programma</span></button>`);
       b.push(`<button class="mini danger" data-remove-card="${esc(c.id)}"
                 title="Rimuovi dal registro">${icona("delete")}<span>Elimina</span></button>`);
       return b.join("");
@@ -2905,6 +2911,24 @@ class AccessControlPanel extends HTMLElement {
           this._comando({
             action: "remove_card",
             card_id: el.dataset.removeCard,
+          });
+        }
+      }),
+    );
+
+    r.querySelectorAll("[data-program-card]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (
+          confirm(
+            "Programmare la tessera con le chiavi dell'impianto?\n\n" +
+              "Appoggiala al lettore entro un minuto e tienila ferma finché non " +
+              "senti i due bip. Da quel momento aprirà solo presentando il suo " +
+              "messaggio firmato: una copia del suo UID non basterà più.",
+          )
+        ) {
+          this._comando({
+            action: "program_card",
+            card_id: el.dataset.programCard,
           });
         }
       }),

@@ -41,9 +41,70 @@ static const uint8_t SAK_ISO14443_4 = 0x20;
 // la stessa lettura; se il gesto era voluto, basta ripassarla.
 static const uint8_t ASSENZE_PER_TOLTA = 3;
 
+// Una tessera trattenuta per il tramite senza comandi da tanto così viene
+// rilasciata da sola. Durante una programmazione i comandi arrivano a pochi
+// centesimi di secondo l'uno dall'altro: un silenzio lungo vuol dire che Home
+// Assistant non c'è più, e il lettore non deve restare bloccato ad aspettarlo.
+static const uint32_t SILENZIO_TRAMITE_MS = 5000;
+
+// Il comando più lungo della programmazione sta sotto i cento byte; questo
+// limite tiene la risposta dentro un solo pacchetto del PN532.
+static const size_t MASSIMO_COMANDO = 200;
+
+static int cifra_(char c) {
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+  return -1;
+}
+
+static bool da_esadecimale_(const std::string &testo, std::vector<uint8_t> &dati) {
+  if (testo.empty() || testo.size() % 2 != 0 || testo.size() > 2 * MASSIMO_COMANDO)
+    return false;
+  dati.clear();
+  for (size_t i = 0; i < testo.size(); i += 2) {
+    int alto = cifra_(testo[i]);
+    int basso = cifra_(testo[i + 1]);
+    if (alto < 0 || basso < 0)
+      return false;
+    dati.push_back(uint8_t((alto << 4) | basso));
+  }
+  return true;
+}
+
+static std::string in_esadecimale_(const uint8_t *dati, size_t quanti) {
+  static const char *const CIFRE = "0123456789ABCDEF";
+  std::string testo;
+  testo.reserve(2 * quanti);
+  for (size_t i = 0; i < quanti; i++) {
+    testo.push_back(CIFRE[dati[i] >> 4]);
+    testo.push_back(CIFRE[dati[i] & 0x0F]);
+  }
+  return testo;
+}
+
 // ── lettura ────────────────────────────────────────────────────────────────
 
+void Ntag424Pn532I2C::update() {
+  // Con una tessera trattenuta non si interroga il campo: una nuova
+  // anticollisione la farebbe ripartire da zero a metà dei comandi.
+  if (this->trattenuta_)
+    return;
+  pn532::PN532::update();
+}
+
 void Ntag424Pn532I2C::loop() {
+  if (this->trattenuta_) {
+    if (millis() - this->ultimo_scambio_ > SILENZIO_TRAMITE_MS) {
+      ESP_LOGW(TAG, "Tramite: nessun comando da %u ms, tessera rilasciata", (unsigned) SILENZIO_TRAMITE_MS);
+      this->rilascia_();
+    }
+    return;
+  }
+
   if (!this->requested_read_)
     return;
 
@@ -73,6 +134,26 @@ void Ntag424Pn532I2C::loop() {
     return;
   nfc::NfcTagUid nfcid(read.begin() + 6, read.begin() + 6 + nfcid_length);
   this->assenze_ = 0;
+
+  // Tramite aperto: la tessera non si legge, si trattiene per Home Assistant.
+  // Anche se era già appoggiata prima: è proprio quella che si vuole
+  // programmare. Solo le ISO 14443-4, perché le altre i comandi non li
+  // capirebbero; una Classic appoggiata adesso si ignora.
+  if (this->tramite_) {
+    if ((read[4] & SAK_ISO14443_4) == 0) {
+      this->turn_off_rf_();
+      return;
+    }
+    this->current_uid_ = nfcid;
+    this->trattenuta_ = true;
+    this->ultimo_scambio_ = millis();
+    char buf[nfc::FORMAT_UID_BUFFER_SIZE];
+    std::string uid = nfc::format_uid_to(buf, nfcid);
+    ESP_LOGI(TAG, "Tramite: tessera trattenuta per Home Assistant");
+    for (auto *trigger : this->triggers_pronta_)
+      trigger->process(uid);
+    return;
+  }
 
   // Stessa tessera ancora appoggiata: è già stata riferita.
   //
@@ -250,6 +331,52 @@ EsitoLink Ntag424Pn532I2C::leggi_link_(std::string &link) {
     link.push_back(char(c));
   }
   return EsitoLink::LETTO;
+}
+
+// ── tramite ────────────────────────────────────────────────────────────────
+
+void Ntag424Pn532I2C::set_tramite(bool attivo) {
+  this->tramite_ = attivo;
+  if (!attivo)
+    this->rilascia_();
+  ESP_LOGI(TAG, "Tramite %s", attivo ? "aperto" : "chiuso");
+}
+
+// La tessera torna libera. Resta però «quella già vista»: se è ancora
+// appoggiata non viene riletta, e una lettura subito dopo la programmazione
+// non si trasforma in un tentativo di accesso che nessuno ha voluto.
+void Ntag424Pn532I2C::rilascia_() {
+  if (this->trattenuta_) {
+    this->trattenuta_ = false;
+    this->turn_off_rf_();
+  }
+}
+
+std::string Ntag424Pn532I2C::scambia(const std::string &comando) {
+  if (!this->tramite_ || !this->trattenuta_)
+    return "";
+
+  std::vector<uint8_t> frame = {pn532::PN532_COMMAND_INDATAEXCHANGE, 0x01};
+  std::vector<uint8_t> byte_comando;
+  if (!da_esadecimale_(comando, byte_comando)) {
+    ESP_LOGW(TAG, "Tramite: comando non valido, ignorato");
+    return "";
+  }
+  frame.insert(frame.end(), byte_comando.begin(), byte_comando.end());
+
+  std::vector<uint8_t> dati;
+  if (!this->write_command_(frame) || !this->read_response(pn532::PN532_COMMAND_INDATAEXCHANGE, dati) ||
+      dati.empty() || dati[0] != 0x00) {
+    // La tessera non ha risposto: si è allontanata. La si rilascia subito,
+    // e sarà Home Assistant a dire com'è andata.
+    ESP_LOGW(TAG, "Tramite: la tessera non risponde più");
+    this->rilascia_();
+    return "";
+  }
+
+  this->ultimo_scambio_ = millis();
+  // I byte non vanno nei log: sono il dialogo cifrato con la tessera.
+  return in_esadecimale_(dati.data() + 1, dati.size() - 1);
 }
 
 void Ntag424Pn532I2C::dump_config() {

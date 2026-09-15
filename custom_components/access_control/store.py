@@ -49,8 +49,10 @@ from .const import (
     SIGNAL_STATE_CHANGED,
     STORAGE_KEY,
     STORAGE_VERSION,
+    SUFFIX_APDU_SERVICE,
     SUFFIX_ENABLE_SWITCH,
     SUFFIX_ENROLL_SERVICE,
+    SUFFIX_PROGRAM_SERVICE,
     SUFFIX_READER_SERVICE,
     SUFFIX_TAMPER_SENSOR,
 )
@@ -590,6 +592,8 @@ class AccessStore:
             for campo, suffisso in (
                 ("reader_service", SUFFIX_READER_SERVICE),
                 ("enroll_service", SUFFIX_ENROLL_SERVICE),
+                ("program_service", SUFFIX_PROGRAM_SERVICE),
+                ("apdu_service", SUFFIX_APDU_SERVICE),
             )
             if not device.get(campo)
         ]

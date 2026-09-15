@@ -82,6 +82,42 @@ api:
               - script.execute: led_pronto
 
     # ═══════════════════════════════════════════════════════════════════════
+    #  Programmazione di una tessera: il tramite (SPEC.md §15, scelta «B»).
+    #
+    #  Home Assistant apre il tramite, il lettore trattiene la prossima NTAG
+    #  424 appoggiata, e da li' in poi passa alla tessera i comandi che Home
+    #  Assistant gli manda, uno alla volta, restituendo le risposte. Tutta la
+    #  crittografia sta in Home Assistant: qui non arriva nessuna chiave, e i
+    #  byte che passano sono cifrati con chiavi di sessione che il nodo non
+    #  puo' ricavare. Un lettore manomesso che li registrasse non ne
+    #  caverebbe niente.
+    #
+    #  La spia e' quella del censimento: in tutti e due i casi il lettore sta
+    #  aspettando una tessera per conto di qualcuno che e' in casa.
+    # ═══════════════════════════════════════════════════════════════════════
+    - action: programmazione
+      variables:
+        attiva: bool
+      then:
+        - lambda: 'id(lettore).set_tramite(attiva);'
+        - if:
+            condition:
+              lambda: 'return attiva;'
+            then:
+              - script.execute: led_censimento
+            else:
+              - script.stop: led_censimento
+              - script.execute: led_pronto
+
+    - action: comando_tessera
+      variables:
+        comando: string
+      then:
+        - api.respond:
+            data: !lambda |-
+              root["risposta"] = id(lettore).scambia(comando);
+
+    # ═══════════════════════════════════════════════════════════════════════
     #  Risposta del controllo accessi.
     #  esito: "ok" | "ko" | "allarme"
     # ═══════════════════════════════════════════════════════════════════════
@@ -328,7 +364,23 @@ binary_sensor:
 # messaggio firmato delle NTAG 424. Nelle azioni `uid` è l'UID letto (la `x`
 # di prima) e `sdm` il link della tessera, vuoto se non ne ha uno.
 ntag424:
+  id: lettore
   update_interval: 500ms
+
+  # Tramite aperto e tessera ferma: Home Assistant può cominciare a
+  # programmarla. Il nodo avvisa e basta — da qui in poi passa solo i byte
+  # che Home Assistant gli manda con `comando_tessera`.
+  on_tessera_pronta:
+    then:
+      - script.execute: blip_lettura
+      - homeassistant.event:
+          event: esphome.access_control_tessera_pronta
+          data:
+            lettore: ${nome_nodo}
+          data_template:
+            uid: "{{ codice }}"
+          variables:
+            codice: !lambda 'return uid;'
 
   # La tessera si è vista ma ha smesso di rispondere a metà: tolta troppo
   # presto, appoggiata storta. Non è una lettura, e a Home Assistant non si

@@ -18,6 +18,7 @@ from .coordinator import AccessCoordinator
 from .enrollment import EnrollmentManager
 from .evaluator import AccessEvaluator
 from .panel import async_remove_panel, async_setup_panel
+from .programmatore import Programmatore
 from .services import async_setup_services, async_unload_services
 from .store import AccessStore
 from .tamper import TamperWatcher
@@ -61,6 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = AccessCoordinator(hass, store)
     enrollment = EnrollmentManager(hass, store)
     evaluator = AccessEvaluator(hass, store, coordinator, enrollment, chiavi)
+    programmatore = Programmatore(hass, store, chiavi)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].update(
@@ -69,6 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "coordinator": coordinator,
             "enrollment": enrollment,
             "evaluator": evaluator,
+            "programmatore": programmatore,
             entry.entry_id: {"config": dict(entry.data)},
         }
     )

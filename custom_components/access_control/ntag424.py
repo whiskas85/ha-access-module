@@ -27,6 +27,7 @@ quelle derivate a viaggiare.
 from __future__ import annotations
 
 import hmac
+import zlib
 from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -137,6 +138,18 @@ def chiave_applicazione(master: bytes, uid: bytes) -> bytes:
     return diversifica(master, uid + bytes([NUMERO_APPLICAZIONE]) + SISTEMA)
 
 
+def chiave_riserva(master: bytes, uid: bytes, numero: int) -> bytes:
+    """Le chiavi 3 e 4, che l'impianto non usa.
+
+    Non si lasciano a zero lo stesso: AN12196 raccomanda di impostarle tutte,
+    e una chiave di fabbrica su una tessera programmata è una porta di cui
+    chiunque ha la chiave, anche se oggi non apre niente di nostro.
+    """
+    if numero in (NUMERO_APPLICAZIONE, NUMERO_META, NUMERO_FILE):
+        raise ValueError("Le chiavi 0, 1 e 2 hanno la loro funzione")
+    return diversifica(master, uid + bytes([numero]) + SISTEMA)
+
+
 # ── messaggio SDM (AN12196) ────────────────────────────────────────────────
 
 
@@ -199,6 +212,201 @@ def verifica(chiave: bytes, lettura: Lettura, mac: bytes, dati: bytes = b"") -> 
     if len(mac) != 8:
         return False
     return hmac.compare_digest(mac_sdm(chiave, lettura, dati), mac)
+
+
+def _cbc(chiave: bytes, iv: bytes, dati: bytes, *, cifra: bool) -> bytes:
+    cipher = Cipher(algorithms.AES(chiave), modes.CBC(iv))
+    lavoro = cipher.encryptor() if cifra else cipher.decryptor()
+    return lavoro.update(dati) + lavoro.finalize()
+
+
+# ── messaggistica sicura EV2 (AN12196 §4, §5.6, §5.9, §5.16) ──────────────
+#
+# Serve alla programmazione: per cambiare chiavi e impostazioni la tessera
+# vuole un'autenticazione a sfida, e poi comandi cifrati e firmati con due
+# chiavi di sessione nate da quella sfida. Tutto qui dentro, e quindi in Home
+# Assistant: il lettore passa i byte e basta, e non vede mai né le chiavi né
+# le chiavi di sessione (SPEC.md §15, scelta «B»).
+
+# Prefissi dei vettori da cui nascono le chiavi di sessione (SV1, SV2) e gli
+# IV dei comandi e delle risposte cifrate.
+_SV_ENC = bytes.fromhex("A55A00010080")
+_SV_MAC = bytes.fromhex("5AA500010080")
+_IV_COMANDO = bytes.fromhex("A55A")
+_IV_RISPOSTA = bytes.fromhex("5AA5")
+
+
+def _ruota(dati: bytes) -> bytes:
+    """Rotazione a sinistra di un byte: RndB → RndB'."""
+    return dati[1:] + dati[:1]
+
+
+def _riempi(dati: bytes) -> bytes:
+    """Padding ISO/IEC 9797-1 metodo 2: 80 e poi zeri, sempre."""
+    dati += b"\x80"
+    return dati + bytes(-len(dati) % BLOCCO)
+
+
+def _svuota(dati: bytes) -> bytes:
+    """Toglie il padding del metodo 2, e pretende che ci sia davvero."""
+    fine = dati.rstrip(b"\x00")
+    if not fine or fine[-1] != 0x80:
+        raise ValueError("Padding assente o sbagliato")
+    return fine[:-1]
+
+
+def _troncato(mac: bytes) -> bytes:
+    """Degli 16 byte di un CMAC la tessera usa gli 8 in posizione dispari."""
+    return mac[1::2]
+
+
+def chiavi_di_sessione(
+    chiave: bytes, rnd_a: bytes, rnd_b: bytes
+) -> tuple[bytes, bytes]:
+    """Le due chiavi di sessione (cifratura, firma) dopo AuthenticateEV2First.
+
+    I 26 byte variabili mescolano i due casuali come vuole AN12196: i primi
+    2 di RndA, poi 6 di RndA in XOR con i primi 6 di RndB, poi gli ultimi 10
+    di RndB e gli ultimi 8 di RndA.
+    """
+    miscela = (
+        rnd_a[0:2]
+        + _xor(rnd_a[2:8], rnd_b[0:6])
+        + rnd_b[6:16]
+        + rnd_a[8:16]
+    )
+    return _cmac(chiave, _SV_ENC + miscela), _cmac(chiave, _SV_MAC + miscela)
+
+
+def autentica_passo_1(
+    chiave: bytes, rnd_b_cifrato: bytes, rnd_a: bytes
+) -> tuple[bytes, bytes]:
+    """Risposta alla sfida della tessera: (dati da mandarle, RndB in chiaro).
+
+    La tessera manda RndB cifrato con la chiave; si risponde con RndA seguito
+    da RndB ruotato, cifrati insieme. Chi non conosce la chiave non sa ruotare
+    un RndB che non riesce a leggere.
+    """
+    if len(rnd_b_cifrato) != BLOCCO or len(rnd_a) != BLOCCO:
+        raise ValueError("RndA e RndB sono di 16 byte")
+    rnd_b = _cbc(chiave, _ZERO, rnd_b_cifrato, cifra=False)
+    return _cbc(chiave, _ZERO, rnd_a + _ruota(rnd_b), cifra=True), rnd_b
+
+
+@dataclass
+class SessioneEV2:
+    """Un'autenticazione riuscita: chiavi di sessione, TI e contatore comandi.
+
+    Il contatore sale di uno a ogni scambio con la tessera, anche per i
+    comandi in chiaro, ed entra in ogni IV e in ogni firma: un comando
+    registrato e rimandato più tardi porta il contatore sbagliato e la
+    tessera lo rifiuta.
+    """
+
+    enc: bytes
+    mac: bytes
+    ti: bytes
+    contatore: int = 0
+
+    def _contatore(self, scarto: int = 0) -> bytes:
+        return (self.contatore + scarto).to_bytes(2, "little")
+
+    def _iv(self, prefisso: bytes, scarto: int) -> bytes:
+        vettore = prefisso + self.ti + self._contatore(scarto)
+        return _aes_blocco(self.enc, vettore + bytes(BLOCCO - len(vettore)))
+
+    def cifra(self, dati: bytes) -> bytes:
+        """I dati di un comando in CommMode.Full, già con il padding."""
+        return _cbc(self.enc, self._iv(_IV_COMANDO, 0), _riempi(dati), cifra=True)
+
+    def decifra(self, dati: bytes) -> bytes:
+        """I dati di una risposta in CommMode.Full, senza padding."""
+        if not dati:
+            return b""
+        chiaro = _cbc(self.enc, self._iv(_IV_RISPOSTA, 1), dati, cifra=False)
+        return _svuota(chiaro)
+
+    def mac_comando(self, comando: int, intestazione: bytes, dati: bytes) -> bytes:
+        corpo = bytes([comando]) + self._contatore() + self.ti + intestazione + dati
+        return _troncato(_cmac(self.mac, corpo))
+
+    def mac_risposta(self, stato: int, dati: bytes) -> bytes:
+        corpo = bytes([stato]) + self._contatore(1) + self.ti + dati
+        return _troncato(_cmac(self.mac, corpo))
+
+    def dati_full(self, comando: int, intestazione: bytes, dati: bytes) -> bytes:
+        """Il campo dati di un comando CommMode.Full: intestazione, cifrato, firma."""
+        cifrato = self.cifra(dati)
+        return intestazione + cifrato + self.mac_comando(comando, intestazione, cifrato)
+
+    def chiudi(self, stato: int, risposta: bytes, *, cifrata: bool) -> bytes:
+        """Verifica la firma della risposta, la decifra, e fa salire il contatore.
+
+        Una firma sbagliata non si tollera: vuol dire che a rispondere non è
+        la tessera con cui ci si è autenticati, o che qualcuno ha toccato i
+        byte per strada. Si interrompe tutto.
+        """
+        if len(risposta) < 8:
+            raise ValueError("Risposta senza firma")
+        dati, firma = risposta[:-8], risposta[-8:]
+        if not hmac.compare_digest(self.mac_risposta(stato, dati), firma):
+            raise ValueError("Firma della risposta non valida")
+        chiaro = self.decifra(dati) if cifrata else dati
+        self.contatore += 1
+        return chiaro
+
+
+def autentica_passo_2(
+    chiave: bytes, rnd_a: bytes, rnd_b: bytes, risposta: bytes
+) -> SessioneEV2:
+    """Chiude l'autenticazione, e controlla che la tessera conosca la chiave.
+
+    La tessera rimanda RndA ruotato: se lo sa ruotare, ha letto RndA, cioè
+    ha la chiave. Solo allora si aprono le chiavi di sessione.
+    """
+    if len(risposta) != 2 * BLOCCO:
+        raise ValueError("Risposta di autenticazione della lunghezza sbagliata")
+    chiaro = _cbc(chiave, _ZERO, risposta, cifra=False)
+    ti, rnd_a_ruotato = chiaro[0:4], chiaro[4:20]
+    if not hmac.compare_digest(rnd_a_ruotato, _ruota(rnd_a)):
+        raise ValueError("La tessera non ha dimostrato di conoscere la chiave")
+    enc, mac = chiavi_di_sessione(chiave, rnd_a, rnd_b)
+    return SessioneEV2(enc=enc, mac=mac, ti=ti)
+
+
+def crc32_nxp(dati: bytes) -> bytes:
+    """Il CRC32 che ChangeKey vuole sulla chiave nuova: senza l'inversione
+    finale del CRC32 standard, e con i byte in ordine little-endian."""
+    return ((zlib.crc32(dati) ^ 0xFFFFFFFF) & 0xFFFFFFFF).to_bytes(4, "little")
+
+
+def dati_cambio_chiave(
+    numero: int,
+    nuova: bytes,
+    versione: int,
+    *,
+    vecchia: bytes,
+    numero_autenticazione: int,
+) -> bytes:
+    """I dati in chiaro di ChangeKey (AN12196 §5.16).
+
+    Due forme. Se si cambia la chiave con cui ci si è autenticati, basta la
+    nuova. Se se ne cambia un'altra, la nuova va in XOR con la vecchia e
+    accompagnata dal suo CRC: così la tessera controlla che chi la cambia
+    conosca anche quella vecchia, e che la nuova sia arrivata intera.
+    """
+    if len(nuova) != BLOCCO or len(vecchia) != BLOCCO:
+        raise ValueError("Le chiavi sono di 16 byte")
+    if numero == numero_autenticazione:
+        return nuova + bytes([versione])
+    return _xor(vecchia, nuova) + bytes([versione]) + crc32_nxp(nuova)
+
+
+def apdu(comando: int, dati: bytes = b"") -> bytes:
+    """Un comando nativo della tessera avvolto in un APDU ISO 7816-4."""
+    if dati:
+        return bytes([0x90, comando, 0x00, 0x00, len(dati)]) + dati + b"\x00"
+    return bytes([0x90, comando, 0x00, 0x00, 0x00])
 
 
 def e_nuova(contatore: int, ultimo: int | None) -> bool:

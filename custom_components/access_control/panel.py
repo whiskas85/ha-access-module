@@ -637,6 +637,13 @@ class AccessCommandView(HomeAssistantView):
             elif action == "remove_card":
                 await store.async_remove_card(body["card_id"])
 
+            elif action == "program_card":
+                # Parte in sottofondo: la risposta torna subito, e com'è
+                # andata lo dice la notifica, quando la tessera è passata.
+                await data["programmatore"].async_avvia(
+                    body["card_id"], body.get("device", "")
+                )
+
             elif action == "upsert_gate":
                 await store.async_upsert_gate(body.get("gate") or {})
 

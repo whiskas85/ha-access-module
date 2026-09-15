@@ -279,6 +279,10 @@ ENROLLMENT_TIMEOUT_S: Final = 60
 ESPHOME_DOMAIN: Final = "esphome"
 SUFFIX_READER_SERVICE: Final = "_esito_accesso"
 SUFFIX_ENROLL_SERVICE: Final = "_modo_censimento"
+# Il tramite per programmare le tessere (SPEC.md §15): una azione apre e
+# chiude, l'altra passa un comando alla tessera e ne restituisce la risposta.
+SUFFIX_PROGRAM_SERVICE: Final = "_programmazione"
+SUFFIX_APDU_SERVICE: Final = "_comando_tessera"
 # Questo e' un'entita', non un'azione: si cerca fra le entita' del
 # dispositivo, non fra i servizi.
 SUFFIX_ENABLE_SWITCH: Final = "_lettura_abilitata"
@@ -399,6 +403,11 @@ DEFAULT_DEVICE: Final[dict] = {
     # al lettore non ha modo di sapere se la finestra e' ancora valida.
     "enroll_service": "",
     "enroll_field": "attivo",
+    # Il tramite per programmare le tessere. Vuoti su un lettore col firmware
+    # di prima: la programmazione allora dice di aggiornarlo, invece di
+    # provarci e fallire a meta'.
+    "program_service": "",
+    "apdu_service": "",
     # Contatto di manomissione del lettore. Il nodo segnala, non decide: e'
     # il modulo a guardare questo sensore e a portare l'impianto in allarme.
     "tamper_sensor": "",

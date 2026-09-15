@@ -490,7 +490,30 @@ La crittografia sta in `ntag424.py`, isolata da Home Assistant e verificata
 contro i vettori pubblicati da NXP (AN10922 per la diversificazione, AN12196
 per la firma): `tests/test_ntag424.py`.
 
-### Programmazione: una finestra, come il censimento
+### Programmazione: implementata con il tramite (scelta «B»)
+
+> Il progetto qui sotto passava la chiave della tessera al lettore. Scelto
+> invece (Marco, 15/09/2026) il **tramite**: il lettore trattiene la tessera
+> e passa i comandi di Home Assistant, e **nessuna chiave arriva mai sul
+> lettore**, nemmeno per la durata della finestra. Le chiavi nuove viaggiano
+> dentro ChangeKey, cifrate con chiavi di sessione nate da una sfida che il
+> lettore non può ricavare. È più forte del progetto originale, riusa la
+> crittografia verificata contro NXP, e prepara l'autenticazione a sfida alla
+> porta. Il costo è la tessera ferma sul lettore circa un secondo.
+>
+> - Si programma solo la tessera scelta dal pannello: un'altra appoggiata
+>   durante la finestra si rifiuta senza toccarla.
+> - **Limite che resta.** Chi clonasse l'UID della tessera scelta su un
+>   emulatore con le chiavi di fabbrica, e si presentasse al lettore proprio
+>   in quel minuto, completerebbe l'autenticazione e riceverebbe le chiavi di
+>   quella tessera — e la chiave meta, che però legge solo gli UID. Resta una
+>   tessera sola, mai la master, e solo mentre qualcuno in casa ha appena
+>   premuto «Programma» e sta andando al lettore.
+> - Sequenza in `programmazione.py`, orchestrazione in `programmatore.py`,
+>   tramite nel componente `ntag424` (azioni `programmazione` e
+>   `comando_tessera`).
+
+Il progetto originale, per memoria:
 
 Le tessere si programmano **dal lettore**, non da un attrezzo a parte:
 
