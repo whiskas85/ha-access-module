@@ -62,12 +62,23 @@ void Ntag424Pn532I2C::loop() {
   nfc::NfcTagUid nfcid(read.begin() + 6, read.begin() + 6 + nfcid_length);
 
   // Stessa tessera ancora appoggiata: è già stata riferita.
+  //
+  // Il campo si spegne anche qui, e non è un dettaglio. Il PN532 di ESPHome
+  // lo lascia acceso, e con una tessera ISO 14443-4 è un difetto: dopo la
+  // RATS la tessera resta attiva, non risponde più alla richiesta del giro
+  // successivo, sembra tolta — e al giro dopo ancora, ripartita da zero,
+  // sembra una tessera nuova. Una tessera lasciata sul lettore veniva così
+  // riletta ogni secondo e mezzo, e con tre dinieghi di fila l'impianto va in
+  // allarme. Spegnendo il campo la tessera riparte da zero a ogni giro, si
+  // ripresenta con lo stesso UID, e resta la stessa lettura.
   if (nfcid.size() == this->current_uid_.size()) {
     bool stessa = true;
     for (size_t i = 0; i < nfcid.size(); i++)
       stessa &= nfcid[i] == this->current_uid_[i];
-    if (stessa)
+    if (stessa) {
+      this->turn_off_rf_();
       return;
+    }
   }
   this->current_uid_ = nfcid;
 
