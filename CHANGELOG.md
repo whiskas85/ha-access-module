@@ -48,6 +48,10 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
   messaggio della tessera. Il sensore *Ultimo accesso* lo mostra fra gli
   attributi, in parole: si vede che cosa ha dimostrato la tessera senza
   aprire i log
+- Nel log di sistema, a livello **avviso**, ogni messaggio NTAG 424 che non
+  e' una firma verificata: chiavi di fabbrica, messaggio non valido, replay.
+  Sono cose che chi gestisce l'impianto deve vedere senza aver alzato il
+  livello di log; la firma verificata resta a livello informazione
 - **`tests/test_sdm.py`** (14 test): messaggi dell'impianto fabbricati con le
   stesse operazioni della tessera, l'esempio NXP a chiavi di fabbrica, replay,
   messaggio di un'altra tessera, firma alterata, master di un altro impianto,
