@@ -8,6 +8,8 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-09-15
+
 ### Corretto
 
 - **Una NTAG 424 lasciata sul lettore veniva riletta ogni secondo e mezzo.**
