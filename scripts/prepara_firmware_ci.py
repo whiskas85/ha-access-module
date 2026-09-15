@@ -51,6 +51,8 @@ def main() -> int:
         f'api_key: "{chiave_api}"\n'
         'ota_password: "solo-per-la-ci"\n'
         'ap_password: "solo-per-la-ci"\n'
+        'web_username: "ci"\n'
+        'web_password: "solo-per-la-ci"\n'
         'wifi_ssid: "ci"\n'
         'wifi_password: "solo-per-la-ci"\n',
         encoding="utf-8",

@@ -24,6 +24,8 @@
 #      api_key:        (openssl rand -base64 32)
 #      ota_password:
 #      ap_password:
+#      web_username:   (pagina di diagnostica, dalla v0.30.2)
+#      web_password:
 #      wifi_ssid:
 #      wifi_password:
 # ═══════════════════════════════════════════════════════════════════════════

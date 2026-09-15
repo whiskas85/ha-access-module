@@ -362,7 +362,10 @@ rete, HA o alimentazione del lettore.
 
 ### Requisiti
 
-- Password API, OTA e AP in `secrets.yaml`, mai nel YAML versionato
+- Password API, OTA, AP e pagina di diagnostica in `secrets.yaml`, mai nel
+  YAML versionato
+- Nessun upload del firmware via web: si aggiorna solo da ESPHome, con la
+  password OTA
 - API ESPHome con cifratura Noise attiva
 - Nodo esterno su VLAN/SSID IoT isolata
 - Log di ogni tentativo, riuscito o negato

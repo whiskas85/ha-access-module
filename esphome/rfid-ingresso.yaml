@@ -151,11 +151,50 @@ wifi:
   password: !secret wifi_password
   # Il nodo esterno va su VLAN/SSID IoT isolata: è il dispositivo più esposto
   # dell'impianto e non deve poter raggiungere il resto della rete.
+  # Il risparmio energetico di default su ESP32 (LIGHT) addormenta la radio fra
+  # un beacon e l'altro: meno consumo, piu' pacchetti persi e collegamenti che
+  # cadono. Il lettore e' alimentato dalla rete, non ha niente da risparmiare.
+  power_save_mode: none
   ap:
     ssid: "RFID Ingresso Fallback"
     password: !secret ap_password
 
-captive_portal:
+# ═══════════════════════════════════════════════════════════════════════════
+#  PAGINA DI DIAGNOSTICA — http://<ip del lettore>, oppure http://192.168.4.1
+#  collegandosi alla rete «RFID Ingresso Fallback»
+#
+#  Serve il giorno in cui il lettore e' fuori, blu, e non si puo' prendere in
+#  mano: stato, segnale, reti visibili, log in diretta, cambio rete, riavvio.
+#
+#  ⚠️ Perche' NON c'e' piu' `captive_portal`.
+#  Quando la rete di emergenza e' accesa il captive portal risponde a TUTTE le
+#  richieste GET con la sua pagina: la diagnostica, cioe' proprio quello che
+#  serve quando il WiFi e' perso, non passerebbe. Il cambio rete lo fa questa
+#  pagina (vedi «Cambia WiFi»), quindi il portale non manca a nessuno.
+#  In piu' il portale caricava da solo l'upload del firmware via web, senza
+#  password oltre a quella della rete di emergenza. Adesso non c'e'.
+#
+#  Password `digest` e non `basic`: con `basic` la password viaggia in chiaro
+#  a ogni richiesta, e questa pagina gira in HTTP.
+#
+#  Chi ha la password comanda anche le entita' — «Lettura abilitata»
+#  compresa. La pagina non sa nasconderne una senza nasconderla anche a Home
+#  Assistant, e il modulo quell'interruttore lo usa. Resta dentro al modello:
+#  il lettore non apre niente, qualunque cosa gli si faccia fare.
+# ═══════════════════════════════════════════════════════════════════════════
+web_server:
+  port: 80
+  version: 3
+  # Sulla rete di emergenza non c'e' internet: la pagina deve stare tutta
+  # nella flash, altrimenti arriva vuota proprio quando serve.
+  local: true
+  log: true
+  # Nessun firmware dalla pagina. Si aggiorna da ESPHome, con la password OTA.
+  ota: false
+  auth:
+    username: !secret web_username
+    password: !secret web_password
+    type: digest
 
 # ───────────────────────────────────────────────────────────────────────────
 #  Componente `ntag424`, da questo stesso repository
@@ -769,10 +808,24 @@ debug:
   update_interval: 60s
 
 sensor:
+  # dBm: il numero vero. Sopra -60 e' ottimo, fra -70 e -80 comincia a
+  # perdere pacchetti, sotto -80 cade.
   - platform: wifi_signal
+    id: segnale_wifi
     name: "Segnale WiFi"
-    update_interval: 60s
+    update_interval: 30s
     entity_category: diagnostic
+  # Lo stesso numero in percentuale, per chi non ragiona in dBm: -100 dBm e'
+  # 0%, -50 dBm e oltre e' 100%. Non aggiunge informazione, la rende leggibile.
+  - platform: template
+    name: "Qualita' WiFi"
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 30s
+    entity_category: diagnostic
+    lambda: |-
+      if (isnan(id(segnale_wifi).state)) return {};
+      return std::min(100.0f, std::max(0.0f, 2.0f * (id(segnale_wifi).state + 100.0f)));
   - platform: uptime
     name: "Acceso da"
     update_interval: 60s
@@ -783,8 +836,87 @@ text_sensor:
     reset_reason:
       name: "Motivo ultimo riavvio"
       entity_category: diagnostic
+  - platform: wifi_info
+    ip_address:
+      name: "Indirizzo IP"
+      entity_category: diagnostic
+    ssid:
+      name: "Rete WiFi"
+      entity_category: diagnostic
+    # Con una rete a piu' access point dice a QUALE e' agganciato: un
+    # segnale debole spesso e' un aggancio al punto sbagliato.
+    bssid:
+      name: "Access point"
+      entity_category: diagnostic
+    # Le reti che il lettore vede e con che segnale. E' la risposta a «la
+    # rete di casa da li' si vede ancora?» quando il WiFi e' perso.
+    scan_results:
+      name: "Reti visibili"
+      entity_category: diagnostic
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  CAMBIA WIFI — dalla pagina di diagnostica (o da Home Assistant)
+#
+#  Prende il posto del captive portal: nome e password nei due campi, poi
+#  «Applica WiFi». Si puo' fare anche collegati alla rete di emergenza.
+#
+#  Una password sbagliata non perde il lettore. `wifi.configure` salva la
+#  rete nuova, ma se entro il timeout non si collega rimette da solo quella
+#  di prima (verificato nel codice di ESPHome 2026.8.2).
+#
+#  La password resta nel campo solo il tempo del tentativo: e' uno stato come
+#  un altro, che la pagina e Home Assistant mostrerebbero a chiunque li apra.
+# ═══════════════════════════════════════════════════════════════════════════
+text:
+  - platform: template
+    id: nuova_rete
+    name: "Nuova rete WiFi"
+    mode: text
+    optimistic: true
+    max_length: 32
+    entity_category: config
+  - platform: template
+    id: nuova_password
+    name: "Nuova password WiFi"
+    mode: password
+    optimistic: true
+    max_length: 64
+    entity_category: config
 
 button:
+  - platform: restart
+    name: "Riavvia"
+    entity_category: config
+
+  - platform: template
+    name: "Applica WiFi"
+    entity_category: config
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(nuova_rete).state.empty();'
+          then:
+            - logger.log: "Cambia WiFi: nome della rete vuoto, niente da fare"
+          else:
+            - logger.log:
+                format: "Cambia WiFi: provo la rete '%s'"
+                args: ['id(nuova_rete).state.c_str()']
+            - wifi.configure:
+                ssid: !lambda 'return id(nuova_rete).state;'
+                password: !lambda 'return id(nuova_password).state;'
+                save: true
+                timeout: 30s
+                on_connect:
+                  - logger.log: "Cambia WiFi: collegato, rete salvata"
+                  - text.set:
+                      id: nuova_password
+                      value: ""
+                on_error:
+                  - logger.log: "Cambia WiFi: non si collega ne' alla nuova ne' alla vecchia rete"
+                  - text.set:
+                      id: nuova_password
+                      value: ""
+
   - platform: template
     name: "Test suono OK"
     on_press:

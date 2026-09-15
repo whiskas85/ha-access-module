@@ -8,6 +8,35 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Pagina di diagnostica sul lettore, con password.** Per il giorno in cui
+  il lettore e' fuori, blu, e non si puo' prendere in mano: si apre
+  all'indirizzo del lettore, oppure a `http://192.168.4.1` collegandosi alla
+  rete «RFID Ingresso Fallback» quando il WiFi e' perso
+  - Stato di tutte le entita', log in diretta, riavvio
+  - **Cambio rete WiFi dalla pagina.** Una password sbagliata non perde il
+    lettore: se entro 30 secondi non si collega, torna da solo alla rete di
+    prima
+  - Qualita' del segnale in percentuale, access point a cui e' agganciato,
+    indirizzo IP e reti visibili: anche in Home Assistant
+  - Password `digest`, pagina tutta nella flash (sulla rete di emergenza non
+    c'e' internet), nessun upload del firmware dalla pagina
+
+### Cambiato
+
+- **Tolto il captive portal.** Con la rete di emergenza accesa rispondeva a
+  ogni richiesta con la sua pagina, e la diagnostica non passava. Il cambio
+  rete lo fa ora la pagina di diagnostica. Con il portale se ne va anche
+  l'upload del firmware via web, che chiedeva solo la password della rete
+  di emergenza
+- **WiFi senza risparmio energetico** (`power_save_mode: none`). Quello di
+  default su ESP32 addormenta la radio fra un beacon e l'altro, e perde
+  pacchetti: il lettore e' alimentato, non ha niente da risparmiare
+- ⚠️ **Due segreti nuovi: `web_username` e `web_password`.** Vanno aggiunti
+  al `secrets.yaml` di ESPHome prima di compilare, altrimenti la
+  compilazione si ferma
+
 ## [0.30.1] - 2026-09-15
 
 ### Corretto
