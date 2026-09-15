@@ -68,6 +68,26 @@ jobs:
       - run: pip install cryptography==50.0.1 pytest==9.1.1
       - run: pytest tests -q
 
+  firmware:
+    name: Firmware ESPHome
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # La toolchain ESP-IDF pesa: senza cache si riscarica a ogni push.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-esphome-2026.8.2
+      # La stessa versione dell'add-on di casa: il componente usa l'interno
+      # del PN532 di ESPHome, e un cambio di versione lo puo' rompere. Quando
+      # si aggiorna l'add-on, si aggiorna anche qui.
+      - run: pip install esphome==2026.8.2
+      - run: python scripts/prepara_firmware_ci.py
+      - run: esphome compile esphome/rfid-ingresso.yaml
+
   js:
     name: Sintassi del pannello
     runs-on: ubuntu-latest

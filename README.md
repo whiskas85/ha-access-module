@@ -37,8 +37,10 @@ capacità di *dichiarare* «ho letto il codice X» — non di aprire.
 
 ## Perché una credenziale debole è accettabile
 
-Un tag MIFARE Classic è **clonabile in trenta secondi**, e il PN532 letto via
-ESPHome fornisce **solo l'UID**, senza autenticazione.
+Un tag MIFARE Classic è **clonabile in trenta secondi**: di lui il lettore
+conosce **solo l'UID**, senza autenticazione. Lo stesso vale per qualunque
+tessera che non presenti un messaggio firmato verificato (vedi *Livello di
+sicurezza*).
 
 La sicurezza non viene dal tag: viene dalle **finestre**. Le credenziali sono
 accettate solo quando una finestra le ammette, e ogni finestra dice quali ruoli
@@ -141,21 +143,26 @@ Rilevato dalla lunghezza dell'UID, che è normata da ISO/IEC 14443-3:
 | — | NTAG424 con cryptogram verificato | forte |
 | — | Impronta R503 | forte |
 
-> **Oggi nessuna tessera può risultare «forte», ed è corretto così.**
+> **«Forte» non si rileva: si dimostra.**
 >
 > Il livello non descrive il chip: descrive il fatto che il modulo abbia
 > **verificato crittograficamente** la credenziale. Un NTAG424 di cui si legge
 > solo l'UID si clona esattamente come una MIFARE Classic — la protezione sta
-> nel cryptogram AES, che oggi nessuno verifica.
+> nel messaggio firmato che produce a ogni lettura, e conta solo se viene
+> verificato.
 >
-> Per questo la rilevazione automatica non può promuovere a `forte`, e
-> dichiararlo a mano non renderebbe forte la credenziale: farebbe solo credere
-> al motore di autorizzazione qualcosa che nessuno ha controllato. Ci si
-> arriverà con il componente NTAG424 di §12, quando ci sarà davvero qualcosa
-> da verificare.
+> Il lettore quel messaggio lo legge e lo riferisce; Home Assistant lo prova
+> contro le chiavi dell'impianto (`sdm.py`). Una tessera diventa `forte` la
+> prima volta che ne presenta uno valido, e **da quel momento senza messaggio
+> non apre più**: una lettura del solo UID è quella di un clone. Un messaggio
+> già visto è un replay, e si nega.
 >
-> Che 7 byte non distingua un NTAG213 da un NTAG424 non è quindi un problema:
-> senza verifica del cryptogram contano uguale.
+> Una NTAG 424 con le chiavi di fabbrica produce un messaggio che si verifica,
+> ma resta `debole`: quelle chiavi le conosce chiunque. Per diventare forte va
+> programmata con le chiavi dell'impianto (SPEC.md §15, in arrivo).
+>
+> Che 7 byte non distinguano un NTAG213 da un NTAG424 non è quindi un
+> problema: finché non c'è un messaggio verificato, contano uguale.
 
 Serve censirla da un UID già noto? C'è ancora la via manuale:
 
@@ -389,7 +396,9 @@ alla radice, invece di essere rifiutata dopo essere già arrivata.
 
 ## Il nodo lettore
 
-`esphome/rfid-ingresso.yaml` — ESP32 con PN532 su I²C a 50 kHz.
+`esphome/rfid-ingresso.yaml` — ESP32 con PN532 su I²C a 50 kHz, letto dal
+componente [`ntag424`](esphome/custom_components/ntag424/README.md) di questo
+repository: oltre all'UID riferisce il messaggio firmato delle NTAG 424.
 
 | GPIO | Uso |
 |---|---|
@@ -404,9 +413,9 @@ l'allarme spegne, e riparte acceso dopo un blackout — un lettore muto dopo un
 calo di tensione è un guasto silenzioso.
 
 Legge, non decide, non attua: **nessun GPIO di quel nodo è collegato a un relè
-di un varco, e non deve esserlo mai.** Le chiavi crittografiche future stanno
-in Home Assistant, non nella flash di un dispositivo raggiungibile dalla
-strada.
+di un varco, e non deve esserlo mai.** Le chiavi crittografiche stanno in Home
+Assistant, non nella flash di un dispositivo raggiungibile dalla strada: il
+nodo riferisce il messaggio della tessera senza poterlo verificare.
 
 `secrets.yaml` non è versionato. Il template è in `esphome/secrets.yaml.example`.
 
@@ -461,7 +470,7 @@ Home Assistant o dall'alimentazione del lettore.
 
 ## Fuori scope, per ora
 
-- Custom component ESPHome per NTAG424 DNA (cryptogram AES verificato lato HA)
+- Programmazione delle NTAG424 dal lettore, con le chiavi dell'impianto
 - Custom component `UpChar`/`DownChar` su R503 — enrollment unico riutilizzabile
 - Storage cifrato dei template biometrici, escluso dai backup
 - Secondo nodo `rfid-garage`

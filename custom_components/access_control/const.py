@@ -136,17 +136,18 @@ TECH_NTAG424: Final = "ntag424"
 TECH_FINGERPRINT: Final = "impronta"
 TECH_UNKNOWN: Final = "sconosciuta"
 
-# ⚠️ NESSUNA tecnologia rilevabile oggi vale `forte`, ed è corretto così.
+# ⚠️ NESSUNA tecnologia rilevabile dall'UID vale `forte`, ed è corretto così.
 #
 # `forte` non descrive il chip: descrive il fatto che il modulo abbia
 # *verificato crittograficamente* la credenziale. Un NTAG424 di cui leggiamo
 # solo l'UID si clona esattamente come una MIFARE Classic — la protezione sta
-# nel cryptogram AES, che oggi nessuno verifica.
+# nel messaggio firmato, e conta solo se qualcuno lo verifica.
 #
-# Perciò `ntag424` e `impronta` restano in tabella ma sono irraggiungibili
-# dalla rilevazione automatica: ci arriveranno i custom component di §12,
-# quando ci sarà davvero qualcosa da verificare. Marcare a mano una tessera
-# come "forte" significherebbe solo mentire al motore di autorizzazione.
+# Perciò `ntag424` non si rileva: ci si arriva **solo** quando la tessera
+# presenta un messaggio che si verifica con le chiavi dell'impianto (sdm.py).
+# Da quel momento la tessera deve presentarlo a ogni lettura, e una lettura
+# del solo UID viene negata: è quello che fa un clone dell'UID. Marcare a mano
+# una tessera come "forte" significherebbe solo mentire al motore.
 TECHNOLOGY_SECURITY: Final[dict[str, str]] = {
     TECH_MIFARE_CLASSIC: SECURITY_WEAK,
     TECH_ISO14443A_7B: SECURITY_WEAK,
@@ -200,6 +201,12 @@ REASON_ALARM_ACTIVE: Final = "sistema_in_allarme"
 REASON_NO_ACTIONS: Final = "nessuna_azione_configurata_sul_lettore"
 REASON_DEVICE_NOT_REGISTERED: Final = "lettore_non_registrato"
 REASON_ACTIONS_FAILED: Final = "azioni_del_lettore_fallite"
+# Messaggio firmato giusto, ma già visto: qualcuno lo ha registrato e lo sta
+# rigiocando. SPEC.md §15 lo vuole un diniego, non un errore.
+REASON_SDM_REPLAY: Final = "messaggio_della_tessera_gia_visto"
+# Tessera verificata in passato che adesso si presenta senza un messaggio
+# valido: un clone del suo UID, o una lettura interrotta a metà.
+REASON_SDM_REQUIRED: Final = "tessera_forte_senza_messaggio_valido"
 
 # Testi leggibili, per la dashboard e le notifiche. Il codice resta la chiave
 # stabile su cui si scrivono le automazioni; questo è solo per gli umani.
@@ -219,6 +226,21 @@ REASON_LABELS: Final[dict[str, str]] = {
     REASON_NO_ACTIONS: "il lettore non ha azioni configurate",
     REASON_DEVICE_NOT_REGISTERED: "lettore non registrato",
     REASON_ACTIONS_FAILED: "le azioni del lettore sono fallite",
+    REASON_SDM_REPLAY: "messaggio della tessera già visto: possibile replay",
+    REASON_SDM_REQUIRED: (
+        "tessera verificata presentata senza messaggio valido: possibile clone"
+    ),
+}
+
+# Che cosa ha dimostrato il messaggio della tessera. Le chiavi sono gli esiti
+# di sdm.py, scritte qui per non far importare la crittografia a chi deve solo
+# mostrare un'etichetta.
+VERIFICA_LABELS: Final[dict[str, str]] = {
+    "assente": "solo UID",
+    "non_valido": "messaggio non valido",
+    "fabbrica": "firma valida, ma con le chiavi di fabbrica",
+    "replay": "messaggio già visto",
+    "valido": "firma verificata",
 }
 
 ALARM_LABELS: Final[dict[str, str]] = {

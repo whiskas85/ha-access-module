@@ -108,6 +108,10 @@ class Card:
     last_used: str | None = None
     uses: int = 0
     note: str = ""
+    # L'ultimo contatore SDM verificato con le chiavi dell'impianto. Un
+    # messaggio con un contatore uguale o più basso è un replay. None finché
+    # la tessera non ha mai presentato un messaggio valido.
+    sdm_counter: int | None = None
 
     @property
     def security(self) -> str:
@@ -139,6 +143,7 @@ class Card:
             "last_used": self.last_used,
             "uses": self.uses,
             "note": self.note,
+            "sdm_counter": self.sdm_counter,
         }
 
     @classmethod
@@ -157,6 +162,8 @@ class Card:
             card.created = data["created"]
         card.last_used = data.get("last_used")
         card.uses = int(data.get("uses") or 0)
+        contatore = data.get("sdm_counter")
+        card.sdm_counter = int(contatore) if contatore is not None else None
         return card
 
 
@@ -181,12 +188,16 @@ class AccessEvent:
     gate: str = ""
     system_state: str = ""
     reason: str = ""
+    # Che cosa ha dimostrato il messaggio della tessera (vedi sdm.py). Vuoto
+    # nelle righe scritte prima che il lettore sapesse leggerlo.
+    verification: str = ""
     timestamp: str = field(default_factory=_now_iso)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "esito": self.result,
             "motivo": self.reason,
+            "verifica": self.verification,
             "uid": self.uid,
             "card_id": self.card_id,
             "card_nome": self.card_name,
@@ -204,6 +215,7 @@ class AccessEvent:
         return cls(
             result=data.get("esito", ""),
             reason=data.get("motivo", ""),
+            verification=data.get("verifica", ""),
             uid=data.get("uid", ""),
             card_id=data.get("card_id"),
             card_name=data.get("card_nome", ""),

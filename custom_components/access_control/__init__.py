@@ -12,6 +12,7 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.loader import async_get_integration
 
 from .actions import async_open_gate
+from .chiavi import ChiaviNtag424
 from .const import DOMAIN, PLATFORMS
 from .coordinator import AccessCoordinator
 from .enrollment import EnrollmentManager
@@ -52,9 +53,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             store.settings[key] = value
     await store.async_save()
 
+    # La master sta in un file suo e non in `store`: `store` lo legge il
+    # pannello, e la master non deve poterci arrivare (vedi chiavi.py).
+    chiavi = ChiaviNtag424(hass)
+    await chiavi.async_load()
+
     coordinator = AccessCoordinator(hass, store)
     enrollment = EnrollmentManager(hass, store)
-    evaluator = AccessEvaluator(hass, store, coordinator, enrollment)
+    evaluator = AccessEvaluator(hass, store, coordinator, enrollment, chiavi)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].update(
@@ -120,7 +126,12 @@ def _async_subscribe_reads(
             # Il firmware può dichiarare il proprio nome invece del device_id,
             # che non sempre viaggia negli eventi personalizzati di ESPHome.
             device_id = _device_per_nome(hass, event.data.get("lettore") or "")
-        await evaluator.async_handle_scan(uid, device_id)
+        # Il link della tessera, se ne ha uno. Arriva da fuori casa e lo
+        # riferisce un dispositivo che potrebbe essere stato sostituito: si
+        # passa così com'è, e a fidarsene o no ci pensa sdm.py.
+        await evaluator.async_handle_scan(
+            uid, device_id, event.data.get("sdm") or ""
+        )
 
     unsub_tag = hass.bus.async_listen(EVENT_TAG_SCANNED, _da_tag)
     unsub_lettore = hass.bus.async_listen(EVENT_READER_SCAN, _da_lettore)

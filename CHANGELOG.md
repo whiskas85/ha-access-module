@@ -8,6 +8,66 @@ rilascio, `scripts/bump.py` le promuove alla nuova versione con la data.
 
 ## [Unreleased]
 
+### Aggiunto
+
+- **Il lettore legge il messaggio firmato delle NTAG 424.** Nuovo componente
+  ESPHome `ntag424`, in `esphome/custom_components/ntag424`, al posto di
+  `pn532_i2c`: stesso chip, stesso bus, stesse opzioni. Se la tessera parla
+  ISO 14443-4, le chiede il file NDEF con gli stessi comandi di un telefono e
+  manda il link a Home Assistant nell'evento, nel nuovo campo `sdm`
+  - Legge e riferisce, non verifica: sul nodo non c'e' nessuna chiave (§2).
+    Non interpreta nemmeno il link — un messaggio di forma diversa, o una
+    lettura fallita a meta', lasciano il campo vuoto e la lettura resta
+    quella del solo UID
+  - Il trasporto I²C e' copiato da `pn532_i2c` di ESPHome 2026.8 e non
+    ereditato, perche' li' la classe e' `final`
+- **`sdm.py`: che cosa dimostra una lettura.** Estrae dati cifrati e firma e
+  li prova prima con le chiavi dell'impianto, poi con quelle di fabbrica.
+  Cinque esiti invece di «valida o no»: `assente`, `non_valido`, `fabbrica`,
+  `replay`, `valido`. Solo `valido` vale `forte`
+  - `fabbrica` e' la firma giusta con le chiavi tutte a zero: dimostra che la
+    tessera funziona, non che e' autentica, perche' quelle chiavi le conosce
+    chiunque. Resta debole
+  - La firma si prova sull'UID letto in anticollisione: un messaggio vero
+    presentato da un'altra tessera non vale
+  - Link con campi ripetuti, lunghezze sbagliate o caratteri non esadecimali
+    si scartano senza provare a indovinare
+- **Una tessera verificata resta forte.** Al primo messaggio valido con le
+  chiavi dell'impianto la tessera diventa `ntag424`, e da quel momento una
+  lettura senza messaggio valido e' negata (`tessera_forte_senza_messaggio_valido`):
+  e' quella di un clone dell'UID. Un messaggio gia' visto e' negato come
+  replay (`messaggio_della_tessera_gia_visto`)
+  - Il contatore si registra appena il messaggio si verifica, prima di
+    sapere se la lettura aprira': un messaggio valido presentato fuori orario
+    e' comunque consumato
+- **`chiavi.py`: il posto della master**, un file suo in `.storage` con i
+  permessi del solo proprietario, separato dallo stato che legge il pannello.
+  Per ora si legge soltanto: la crea la programmazione delle tessere, che
+  arriva dopo. Finche' non c'e', nessuna tessera puo' risultare forte
+- Ogni riga del registro accessi porta il campo `verifica`, con l'esito del
+  messaggio della tessera
+- **`tests/test_sdm.py`** (14 test): messaggi dell'impianto fabbricati con le
+  stesse operazioni della tessera, l'esempio NXP a chiavi di fabbrica, replay,
+  messaggio di un'altra tessera, firma alterata, master di un altro impianto,
+  link malformati. Nessuna lettura di una tessera vera: il messaggio contiene
+  l'UID
+- **Job di CI «Firmware ESPHome»**: compila il nodo con ESPHome 2026.8.2 e il
+  componente di quel commit, preso dalla cartella e non da GitHub. Una CI che
+  compilasse il componente di `main` sarebbe verde senza aver provato niente
+
+### Cambiato
+
+- Per le MIFARE Classic non cambia niente, tranne che nei log non compare piu'
+  `Authentication failed - Block 0x04`: era ESPHome che tentava di leggere
+  l'NDEF delle Classic, e il nuovo componente non ci prova
+
+### Da sapere
+
+- **Il messaggio SDM non e' una sfida-risposta.** La tessera lo produce da
+  sola, a chiunque la legga: chi la legge di nascosto ottiene un messaggio
+  valido una volta. E' un salto enorme rispetto all'UID, ma non e'
+  l'autenticazione piena. Il ragionamento completo e' in SPEC.md §15
+
 ## [0.28.0] - 2026-09-14
 
 ### Aggiunto

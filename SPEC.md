@@ -372,10 +372,11 @@ rete, HA o alimentazione del lettore.
 
 - Il tag MIFARE Classic in uso è **clonabile in trenta secondi**. È un tag da
   collaudo. La sicurezza reale viene dalla macchina a stati.
-- Il PN532 letto via ESPHome fornisce **solo l'UID**, nessuna autenticazione.
-- L'errore `Authentication failed - Block 0x04` nei log è atteso e innocuo:
-  è ESPHome che tenta la lettura NDEF con chiave di default. L'UID è già stato
-  acquisito.
+- Di una tessera che non presenta un messaggio SDM verificato si conosce
+  **solo l'UID**, nessuna autenticazione (vedi §15).
+- ~~L'errore `Authentication failed - Block 0x04` nei log~~: non compare più.
+  Era il PN532 di ESPHome che tentava la lettura NDEF delle MIFARE Classic con
+  la chiave di default; il componente `ntag424` non la tenta.
 
 ### Mai fare
 
@@ -530,6 +531,41 @@ Solo a verifica riuscita la tessera vale `forte`; una lettura senza cryptogram
 valido resta al livello dell'UID, cioè `debole`. Il contatore letture dentro il
 messaggio va confrontato con l'ultimo visto: un valore uguale o più basso è un
 replay, e va trattato come un diniego — non come un errore.
+
+### Lettura: implementata
+
+- **Nodo** — componente ESPHome `ntag424` al posto di `pn532_i2c`. Se la
+  tessera parla ISO 14443-4, le chiede il file NDEF con i comandi di un
+  telefono e riferisce il link nell'evento, campo `sdm`. Non interpreta
+  niente: un messaggio di forma diversa, o una lettura fallita a metà,
+  lasciano il campo vuoto.
+- **Home Assistant** — `sdm.py` estrae dati cifrati e firma e li prova prima
+  con le chiavi dell'impianto, poi con quelle di fabbrica. Cinque esiti:
+  `assente`, `non_valido`, `fabbrica`, `replay`, `valido`. Solo `valido`
+  vale `forte`; `fabbrica` dimostra che la tessera funziona, non che è
+  autentica.
+- **Una tessera forte lo resta.** Al primo messaggio `valido` la tessera
+  passa a `ntag424`, e da lì ogni lettura senza messaggio valido è negata:
+  è quello che fa un clone dell'UID. Il contatore si registra appena il
+  messaggio si verifica, anche se poi la lettura viene negata per l'orario.
+- La firma si prova sull'UID letto in anticollisione, non su quello
+  decifrato: il messaggio deve venire dalla tessera che si è presentata.
+
+### Il limite del messaggio SDM: non è una sfida
+
+La tessera produce il messaggio da sola, a chiunque la legga: non risponde a
+una domanda del lettore. Chi riesce a leggerla di nascosto — un telefono
+accostato allo zaino — ottiene un messaggio valido con un contatore mai
+visto, che vale **una volta**, finché la tessera vera non passa di nuovo al
+lettore.
+
+Rispetto all'UID è un salto enorme: il clone non si fabbrica, ogni messaggio
+rubato vale al più un'apertura, e comunque solo dentro una finestra (§5). Ma
+non è l'autenticazione piena. Quella è la sfida-risposta
+(`AuthenticateEV2First`) con la chiave della tessera, calcolata in Home
+Assistant e fatta viaggiare attraverso il nodo, che resterebbe senza chiavi.
+Da valutare dopo la programmazione, che viene prima perché senza chiavi
+dell'impianto nessuna delle due difese vale qualcosa.
 
 ---
 

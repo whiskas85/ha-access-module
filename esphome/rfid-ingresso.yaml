@@ -114,6 +114,27 @@ wifi:
 captive_portal:
 
 # ───────────────────────────────────────────────────────────────────────────
+#  Componente `ntag424`, da questo stesso repository
+#
+#  Il PN532 di ESPHome riferisce solo l'UID. Questo riferisce anche il
+#  messaggio firmato che una NTAG 424 produce a ogni lettura (SPEC.md §15), e
+#  lo manda a Home Assistant così com'è: la verifica si fa là, dove stanno le
+#  chiavi. Il codice è in `esphome/custom_components/ntag424`.
+#
+#  Segue `main`, come il pacchetto del nodo in nodo-locale.yaml.example. Se lì
+#  fissi `ref` a un tag, fissalo anche qui allo stesso tag: altrimenti questo
+#  file e il componente arrivano da due versioni diverse.
+# ───────────────────────────────────────────────────────────────────────────
+external_components:
+  - source:
+      type: git
+      url: https://github.com/whiskas85/ha-access-module
+      ref: main
+      path: esphome/custom_components
+    components: [ntag424]
+    refresh: 0s
+
+# ───────────────────────────────────────────────────────────────────────────
 #  Bus I²C — PN532 alimentato a 5V, bus a 50 kHz
 #
 #  50 kHz e non i 100 kHz di default: il PN532 su cavo lungo verso l'esterno
@@ -303,9 +324,12 @@ binary_sensor:
       - delayed_on: 50ms
       - delayed_off: 200ms
 
-pn532_i2c:
+# Al posto di `pn532_i2c`: stesso chip, stesso bus, stesse opzioni, più il
+# messaggio firmato delle NTAG 424. Nelle azioni `uid` è l'UID letto (la `x`
+# di prima) e `sdm` il link della tessera, vuoto se non ne ha uno.
+ntag424:
   update_interval: 500ms
-  on_tag:
+  on_lettura:
     then:
       # ═══════════════════════════════════════════════════════════════════
       #  1. Feedback immediato di lettura.
@@ -368,6 +392,10 @@ pn532_i2c:
                         lettore: ${nome_nodo}
                       data_template:
                         uid: "{{ codice }}"
+                        # Il link intero, non i due campi estratti: estrarli
+                        # vorrebbe dire interpretare, e il nodo non
+                        # interpreta. Vuoto per le tessere senza SDM.
+                        sdm: "{{ messaggio }}"
                       variables:
                         # `!lambda` NON e' decorativo: senza il tag, ESPHome
                         # manda a Home Assistant il TESTO "return x;" invece
@@ -376,7 +404,8 @@ pn532_i2c:
                         # modulo con lo stesso codice — il registro censisce
                         # una tessera fantasma alla prima lettura e da li' in
                         # poi ogni altra tessera risulta "gia' censita".
-                        codice: !lambda 'return x;'
+                        codice: !lambda 'return uid;'
+                        messaggio: !lambda 'return sdm;'
                 else:
                   - logger.log: "Rate limit attivo"
                   - script.execute: suono_ko

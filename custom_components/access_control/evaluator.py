@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .actions import async_run_device_actions
+from .chiavi import ChiaviNtag424
 from .const import (
     ALARM_BLACKLIST,
     ALARM_DISABLED_CARD,
@@ -46,6 +47,8 @@ from .const import (
     REASON_RATE_LIMIT,
     REASON_ROLE_NOT_ALLOWED,
     REASON_ROLE_NOT_ASSIGNED,
+    REASON_SDM_REPLAY,
+    REASON_SDM_REQUIRED,
     REASON_UNKNOWN_CARD,
     RESULT_ALARM,
     RESULT_BLACKLIST,
@@ -53,12 +56,21 @@ from .const import (
     RESULT_ENROLLED,
     RESULT_GRANTED,
     SECURITY_UNKNOWN,
+    TECH_NTAG424,
+    VERIFICA_LABELS,
 )
 from .coordinator import AccessCoordinator
 from .enrollment import EnrollmentManager
 from .models import AccessEvent, Card, normalize_uid, uid_bytes
 from .nomi import nome_dispositivo, nome_persona
 from .notifier import async_notify, async_notify_alarm_with_open
+from .sdm import (
+    ESITO_ASSENTE,
+    ESITO_REPLAY,
+    ESITO_VALIDO,
+    Verifica,
+    verifica_lettura,
+)
 from .store import AccessStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -95,11 +107,13 @@ class AccessEvaluator:
         store: AccessStore,
         coordinator: AccessCoordinator,
         enrollment: EnrollmentManager,
+        chiavi: ChiaviNtag424,
     ) -> None:
         self.hass = hass
         self.store = store
         self.coordinator = coordinator
         self.enrollment = enrollment
+        self.chiavi = chiavi
         # Timestamp delle letture recenti, per il rate limit lato Home
         # Assistant. Quello nel lettore non basta: un firmware sostituito lo
         # aggirerebbe, e il lettore sta fuori casa.
@@ -107,8 +121,14 @@ class AccessEvaluator:
 
     # ── ingresso principale ────────────────────────────────────────────────
 
-    async def async_handle_scan(self, raw_uid: str, device_id: str = "") -> Decision:
-        """Valuta una lettura e porta a termine tutto ciò che ne consegue."""
+    async def async_handle_scan(
+        self, raw_uid: str, device_id: str = "", sdm: str = ""
+    ) -> Decision:
+        """Valuta una lettura e porta a termine tutto ciò che ne consegue.
+
+        `sdm` è il link che una NTAG 424 produce a ogni lettura, così come il
+        lettore l'ha letto; vuoto per tutte le altre letture.
+        """
         uid = normalize_uid(raw_uid)
         # Non `devices.get`: qui i servizi del lettore, se non sono ancora
         # stati scelti, vengono indovinati. Un impianto gia' installato si
@@ -128,14 +148,15 @@ class AccessEvaluator:
         if self.store.enrollment_accepts(device_id):
             return await self._async_enroll(uid, device, device_id)
 
-        decision = self._decide(uid, device_id)
+        verifica = await self._async_verifica(uid, sdm)
+        decision = self._decide(uid, device_id, verifica)
 
         # Rispondere SEMPRE, anche negando, e prima di attuare: se il modulo
         # tace, il dispositivo emette il pattern "non raggiungibile" e chi è
         # alla porta crede che il sistema sia guasto.
         await self._async_respond(device, granted=decision.granted)
 
-        event = self._build_event(decision, uid, device_id)
+        event = self._build_event(decision, uid, device_id, verifica)
         self.hass.bus.async_fire(EVENT_ACCESS, event.to_dict())
         await self.store.async_append_log(event)
 
@@ -162,9 +183,52 @@ class AccessEvaluator:
 
         return decision
 
+    # ── messaggio della tessera ────────────────────────────────────────────
+
+    async def _async_verifica(self, uid: str, sdm: str) -> Verifica:
+        """Che cosa dimostra il messaggio che accompagna questa lettura.
+
+        Il contatore si registra appena il messaggio si verifica, prima di
+        sapere se la lettura aprirà: un messaggio valido presentato fuori
+        orario è comunque consumato, e ripresentarlo dopo è un replay.
+        """
+        card = self.store.card_by_uid(uid)
+        try:
+            uid_letto = bytes.fromhex(uid.replace("-", ""))
+        except ValueError:
+            uid_letto = b""
+
+        verifica = verifica_lettura(
+            sdm,
+            uid_letto,
+            self.chiavi.master,
+            card.sdm_counter if card is not None else None,
+        )
+        if verifica.esito != ESITO_ASSENTE:
+            _LOGGER.info(
+                "Messaggio NTAG 424 da %s: %s (contatore %s)",
+                card.label if card is not None else "tessera non censita",
+                VERIFICA_LABELS.get(verifica.esito, verifica.esito),
+                verifica.contatore if verifica.contatore is not None else "—",
+            )
+
+        if card is not None and verifica.esito == ESITO_VALIDO:
+            card.sdm_counter = verifica.contatore
+            if card.technology != TECH_NTAG424:
+                # Una volta sola, e per sempre: da qui in poi una lettura del
+                # solo UID di questa tessera è quella di un clone.
+                card.technology = TECH_NTAG424
+                _LOGGER.warning(
+                    "%s ha presentato un messaggio verificato: da ora è forte, "
+                    "e senza messaggio non apre più",
+                    card.label,
+                )
+            await self.store.async_save_and_notify()
+        return verifica
+
     # ── decisione ──────────────────────────────────────────────────────────
 
-    def _decide(self, uid: str, device_id: str) -> Decision:
+    def _decide(self, uid: str, device_id: str, verifica: Verifica) -> Decision:
         card = self.store.card_by_uid(uid)
         role = self.store.role_of(card.person) if card and card.person else ""
 
@@ -192,6 +256,16 @@ class AccessEvaluator:
 
         if card.state != CARD_ACTIVE:
             return Decision(RESULT_DENIED, REASON_CARD_DISABLED, card, role)
+
+        if verifica.esito == ESITO_REPLAY:
+            return Decision(RESULT_DENIED, REASON_SDM_REPLAY, card, role)
+
+        # Una tessera diventata forte lo resta: da lei si accetta solo un
+        # messaggio verificato. Senza questa regola la verifica non
+        # servirebbe a niente — il clone dell'UID si presenterebbe senza
+        # messaggio e verrebbe trattato come una lettura debole qualunque.
+        if card.technology == TECH_NTAG424 and not verifica.forte:
+            return Decision(RESULT_DENIED, REASON_SDM_REQUIRED, card, role)
 
         if not card.person:
             return Decision(RESULT_DENIED, REASON_NO_PERSON, card, role)
@@ -521,12 +595,13 @@ class AccessEvaluator:
     # ── costruzione dell'evento ────────────────────────────────────────────
 
     def _build_event(
-        self, decision: Decision, uid: str, device_id: str
+        self, decision: Decision, uid: str, device_id: str, verifica: Verifica
     ) -> AccessEvent:
         card = decision.card
         return AccessEvent(
             result=decision.result,
             reason=decision.reason,
+            verification=verifica.esito,
             uid=uid,
             card_id=card.id if card else None,
             card_name=card.label if card else "",
